@@ -571,6 +571,38 @@ fun FilterStudioScreen(viewModel: MainViewModel) {
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            // Tag Friends Row
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = HundredGramCardElevated,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showTagFriendsDialog = true }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PersonAdd,
+                        contentDescription = "Tag Friends",
+                        tint = HundredGramPink,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Tag Friends (दोस्तों को टैग करें)",
+                            color = HundredGramTextPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.5.sp
+                        )
+                        Text(
+                            text = if (taggedFriends.isEmpty()) "Tap to tag friends on this post" else "${taggedFriends.size} friends tagged",
+                            color = if (taggedFriends.isEmpty()) HundredGramTextSecondary else HundredGramPink,
+                            fontSize = 11.5.sp
+                        )
+                    }
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
                         contentDescription = null,
