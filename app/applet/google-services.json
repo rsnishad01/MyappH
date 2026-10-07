@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "372418336964",
+    "project_id": "hundredgram-c9182",
+    "storage_bucket": "hundredgram-c9182.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:372418336964:android:0b3719b8e3bedde2461191",
+        "android_client_info": {
+          "package_name": "com.hundredgram.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "372418336964-bntpb38t4ud79ubp4nfrifre381bhkev.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hundredgram.app",
+            "certificate_hash": "6d1c872a940fd5c4422dfe0b567621827412a299"
+          }
+        },
+        {
+          "client_id": "372418336964-q81qbgr3r3pk3ttgoq522hv10sogmbi8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlN7h-TbzHiv8AOVCga_v68UM1cWGv29c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "372418336964-q81qbgr3r3pk3ttgoq522hv10sogmbi8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
