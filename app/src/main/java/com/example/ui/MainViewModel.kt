@@ -780,7 +780,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 tags = tags
                             )
                             _isUploading.value = false
-                            // ... handle drafts ...
+                            val draftId = currentEditingDraftId.value
+                            if (draftId != null) {
+                                repository.draftRepository.deleteDraft(draftId)
+                                currentEditingDraftId.value = null
+                            }
+                            _selectedFilterImageUri.value = null
+                            draftInitialCaption.value = ""
+                            draftInitialLocation.value = ""
                             navigateTo(ScreenDestination.Feed)
                         }
                         is UploadStatus.Idle -> {}

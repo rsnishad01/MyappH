@@ -36,7 +36,18 @@ class MediaStorageHelper(private val context: Context) {
     suspend fun savePostMedia(inputUri: Uri, userId: String = "user"): String = withContext(Dispatchers.IO) {
         val compressed = compressor.compressImage(inputUri, maxDimension = 1440)
         val outputFile = File(getPostStorageDirectory(), "post_${userId}_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.jpg")
-        compressed.data?.let { outputFile.writeBytes(it) }
+        val compFile = compressed.file
+        if (compFile != null && compFile.exists() && compFile.length() > 0) {
+            compFile.copyTo(outputFile, overwrite = true)
+        } else if (compressed.data != null && compressed.data.isNotEmpty()) {
+            outputFile.writeBytes(compressed.data)
+        } else {
+            context.contentResolver.openInputStream(inputUri)?.use { input ->
+                outputFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
         Uri.fromFile(outputFile).toString()
     }
 
@@ -44,7 +55,7 @@ class MediaStorageHelper(private val context: Context) {
         val compressed = compressor.compressVideoReel(inputUri)
         val outputFile = File(getReelStorageDirectory(), "reel_${userId}_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.mp4")
         val compFile = compressed.file
-        if (compFile != null && compFile.exists()) {
+        if (compFile != null && compFile.exists() && compFile.length() > 0) {
             compFile.copyTo(outputFile, overwrite = true)
         } else {
             // Fallback: stream copy directly from inputUri
@@ -60,7 +71,18 @@ class MediaStorageHelper(private val context: Context) {
     suspend fun saveStoryMedia(inputUri: Uri, userId: String = "user"): String = withContext(Dispatchers.IO) {
         val compressed = compressor.compressImage(inputUri, maxDimension = 1920)
         val outputFile = File(getStoryStorageDirectory(), "story_${userId}_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.jpg")
-        compressed.data?.let { outputFile.writeBytes(it) }
+        val compFile = compressed.file
+        if (compFile != null && compFile.exists() && compFile.length() > 0) {
+            compFile.copyTo(outputFile, overwrite = true)
+        } else if (compressed.data != null && compressed.data.isNotEmpty()) {
+            outputFile.writeBytes(compressed.data)
+        } else {
+            context.contentResolver.openInputStream(inputUri)?.use { input ->
+                outputFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
         Uri.fromFile(outputFile).toString()
     }
 
@@ -68,7 +90,18 @@ class MediaStorageHelper(private val context: Context) {
         val uploadsDir = File(context.filesDir, "uploads").apply { mkdirs() }
         val compressed = compressor.compressImage(inputUri, maxDimension = 1440)
         val outputFile = File(uploadsDir, "${prefix}_${UUID.randomUUID().toString().take(8)}.jpg")
-        compressed.data?.let { outputFile.writeBytes(it) }
+        val compFile = compressed.file
+        if (compFile != null && compFile.exists() && compFile.length() > 0) {
+            compFile.copyTo(outputFile, overwrite = true)
+        } else if (compressed.data != null && compressed.data.isNotEmpty()) {
+            outputFile.writeBytes(compressed.data)
+        } else {
+            context.contentResolver.openInputStream(inputUri)?.use { input ->
+                outputFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
         Uri.fromFile(outputFile).toString()
     }
 }
