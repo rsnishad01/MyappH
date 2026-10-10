@@ -97,6 +97,8 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
     implementation(libs.coil.compose)
+    implementation(libs.zxing)
+    implementation(libs.zxing.android)
     implementation(libs.kotlinx.coroutines.android)
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.compose.material:material-icons-extended:1.7.5")

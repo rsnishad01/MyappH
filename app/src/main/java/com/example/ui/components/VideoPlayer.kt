@@ -50,15 +50,21 @@ fun VideoPlayer(
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
             .build()
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("Mozilla/5.0 (Linux; Android 12; Pixel 6 Build/SD1A.210817.036) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36")
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(10000)
-            .setReadTimeoutMs(10000)
+        val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(context)
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
-            .setDataSourceFactory(httpDataSourceFactory)
-        ExoPlayer.Builder(context)
+            .setDataSourceFactory(dataSourceFactory)
+        val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+            setEnableDecoderFallback(true)
+            forceDisableMediaCodecAsynchronousQueueing()
+            setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+        }
+        val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+            .setBufferDurationsMs(500, 10000, 250, 500)
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+        ExoPlayer.Builder(context, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setLoadControl(loadControl)
             .build().apply {
                 setAudioAttributes(audioAttributes, true)
                 repeatMode = Player.REPEAT_MODE_ONE
@@ -100,31 +106,43 @@ fun VideoPlayer(
     LaunchedEffect(videoUrl) {
         if (videoUrl.isNotBlank()) {
             try {
-                hasError = false
-                val uri = if (videoUrl.startsWith("android.resource://") ||
+                val resolvedUri: Uri? = if (videoUrl.startsWith("android.resource://") ||
                     videoUrl.startsWith("content://") ||
-                    videoUrl.startsWith("file://") ||
                     videoUrl.startsWith("http://") ||
                     videoUrl.startsWith("https://")
                 ) {
                     Uri.parse(videoUrl)
-                } else if (videoUrl.startsWith("/")) {
-                    Uri.fromFile(java.io.File(videoUrl))
                 } else {
-                    Uri.parse(videoUrl)
+                    val filePath = if (videoUrl.startsWith("file://")) videoUrl.removePrefix("file://") else videoUrl
+                    val file = java.io.File(filePath)
+                    if (file.exists() && file.length() > 0) {
+                        Uri.fromFile(file)
+                    } else {
+                        null
+                    }
                 }
 
-                val mediaItem = MediaItem.fromUri(uri)
-                exoPlayer.setMediaItem(mediaItem)
-                exoPlayer.prepare()
-                if (isPlaying) {
-                    exoPlayer.play()
+                if (resolvedUri != null) {
+                    hasError = false
+                    val mediaItem = MediaItem.fromUri(resolvedUri)
+                    exoPlayer.setMediaItem(mediaItem)
+                    exoPlayer.prepare()
+                    if (isPlaying) {
+                        exoPlayer.play()
+                    } else {
+                        exoPlayer.pause()
+                    }
                 } else {
-                    exoPlayer.pause()
+                    hasError = true
+                    isBuffering = false
                 }
             } catch (e: Exception) {
                 hasError = true
+                isBuffering = false
             }
+        } else {
+            hasError = true
+            isBuffering = false
         }
     }
 

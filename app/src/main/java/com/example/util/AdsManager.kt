@@ -10,6 +10,7 @@ import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.RequestConfiguration
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 import com.google.android.gms.ads.nativead.NativeAd
@@ -22,10 +23,14 @@ import com.google.android.gms.ads.nativead.NativeAdOptions
 object AdsManager {
     private const val TAG = "AdsManager"
 
-    // Ad IDs configured per AdMob specification
-    const val APP_ID = "ca-app-pub-6058721301027431~1234567890"
+    // Ad IDs configured per user AdMob specification
+    const val APP_ID = "ca-app-pub-6058721301027431~6693520916"
     const val FEED_NATIVE_AD_ID = "ca-app-pub-6058721301027431/8718806610"
     const val REEL_AD_ID = "ca-app-pub-6058721301027431/1195539816"
+
+    // Official Google AdMob sample test ad units for sandbox/emulator validation
+    private const val TEST_NATIVE_AD_ID = "ca-app-pub-3940256099942544/2247696110"
+    private const val TEST_REEL_AD_ID = "ca-app-pub-3940256099942544/8691691433"
 
     private var isInitialized = false
     private var cachedReelInterstitial: InterstitialAd? = null
@@ -36,19 +41,35 @@ object AdsManager {
     fun initialize(context: Context) {
         if (isInitialized) return
         try {
-            MobileAds.initialize(context) { status ->
-                Log.d(TAG, "AdMob MobileAds initialized successfully: $status")
-                isInitialized = true
-                // Preload an interstitial video ad for reels
-                preloadReelVideoAd(context.applicationContext)
-            }
+            // Disable heavy mediation adapter scanning to prevent service binding errors
+            MobileAds.disableMediationAdapterInitialization(context)
+
+            // Configure test device for emulator environments
+            val requestConfiguration = RequestConfiguration.Builder()
+                .setTestDeviceIds(listOf(AdRequest.DEVICE_ID_EMULATOR))
+                .build()
+            MobileAds.setRequestConfiguration(requestConfiguration)
+
+            Thread {
+                try {
+                    MobileAds.initialize(context) { status ->
+                        Log.d(TAG, "AdMob MobileAds initialized successfully: $status")
+                        isInitialized = true
+                        // Preload an interstitial video ad for reels
+                        preloadReelVideoAd(context.applicationContext)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "MobileAds initialize background exception: ${e.message}")
+                }
+            }.start()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize MobileAds: ${e.message}")
+            Log.w(TAG, "MobileAds initialization skipped: ${e.message}")
         }
     }
 
     /**
      * Loads a Native Ad for Post Feed (Every 4 posts)
+     * First attempts with user's live AdMob ID, and falls back to Google test ad unit if live unit has no fill yet.
      */
     fun loadNativeFeedAd(
         context: Context,
@@ -59,13 +80,18 @@ object AdsManager {
         try {
             val adLoader = AdLoader.Builder(context, adUnitId)
                 .forNativeAd { nativeAd ->
-                    Log.d(TAG, "Native feed ad loaded successfully.")
+                    Log.d(TAG, "Native feed ad loaded successfully from unit $adUnitId.")
                     onAdLoaded(nativeAd)
                 }
                 .withAdListener(object : AdListener() {
                     override fun onAdFailedToLoad(error: LoadAdError) {
-                        Log.w(TAG, "Native feed ad failed to load: ${error.message}")
-                        onAdFailed(error)
+                        Log.w(TAG, "Native feed ad unit $adUnitId failed to load: ${error.message}")
+                        if (adUnitId != TEST_NATIVE_AD_ID) {
+                            Log.d(TAG, "Attempting fallback to test native ad unit...")
+                            loadNativeFeedAd(context, TEST_NATIVE_AD_ID, onAdLoaded, onAdFailed)
+                        } else {
+                            onAdFailed(error)
+                        }
                     }
                 })
                 .withNativeAdOptions(
@@ -77,35 +103,39 @@ object AdsManager {
 
             adLoader.loadAd(AdRequest.Builder().build())
         } catch (e: Exception) {
-            Log.e(TAG, "Exception loading native feed ad: ${e.message}")
-            // Fail gracefully without crashing
+            Log.w(TAG, "Exception loading native feed ad: ${e.message}")
         }
     }
 
     /**
      * Preloads Interstitial Video Ad for Reels
      */
-    fun preloadReelVideoAd(context: Context) {
+    fun preloadReelVideoAd(context: Context, adUnitId: String = REEL_AD_ID) {
         try {
             val adRequest = AdRequest.Builder().build()
             InterstitialAd.load(
                 context,
-                REEL_AD_ID,
+                adUnitId,
                 adRequest,
                 object : InterstitialAdLoadCallback() {
                     override fun onAdLoaded(interstitialAd: InterstitialAd) {
-                        Log.d(TAG, "Reel Interstitial Video Ad loaded and cached.")
+                        Log.d(TAG, "Reel Interstitial Video Ad loaded ($adUnitId).")
                         cachedReelInterstitial = interstitialAd
                     }
 
                     override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                        Log.w(TAG, "Reel Video Ad failed to preload: ${loadAdError.message}")
-                        cachedReelInterstitial = null
+                        Log.w(TAG, "Reel Video Ad failed to preload ($adUnitId): ${loadAdError.message}")
+                        if (adUnitId != TEST_REEL_AD_ID) {
+                            Log.d(TAG, "Attempting fallback preload with test reel ad unit...")
+                            preloadReelVideoAd(context, TEST_REEL_AD_ID)
+                        } else {
+                            cachedReelInterstitial = null
+                        }
                     }
                 }
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Exception preloading reel video ad: ${e.message}")
+            Log.w(TAG, "Exception preloading reel video ad: ${e.message}")
         }
     }
 

@@ -549,15 +549,12 @@ fun ChatThreadItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(contentAlignment = Alignment.BottomEnd) {
-            UserAvatar(avatarUrl = thread.recipientAvatarUrl, size = 48.dp)
-            if (thread.isOnline) {
-                Box(
-                    modifier = Modifier
-                        .size(13.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF10B981))
-                )
-            }
+            UserAvatar(
+                avatarUrl = thread.recipientAvatarUrl,
+                size = 48.dp,
+                isOnline = thread.isOnline,
+                showOnlineStatus = true
+            )
         }
 
         Spacer(modifier = Modifier.width(14.dp))

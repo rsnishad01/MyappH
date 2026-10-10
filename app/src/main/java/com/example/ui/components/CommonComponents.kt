@@ -90,8 +90,8 @@ fun UserAvatar(
     hasActiveStory: Boolean = false,
     isSeen: Boolean = false,
     isVerified: Boolean = false,
-    isOnline: Boolean = true,
-    showOnlineStatus: Boolean = true,
+    isOnline: Boolean = false,
+    showOnlineStatus: Boolean = (size >= 38.dp),
     onClick: () -> Unit = {}
 ) {
     val safeAvatarUrl = remember(avatarUrl) {
@@ -193,13 +193,14 @@ fun UserAvatar(
             )
         }
 
-        if (isOnline && showOnlineStatus) {
-            val dotSize = (size * 0.28f).coerceIn(9.dp, 16.dp)
+        if (showOnlineStatus) {
+            val dotSize = (size * 0.28f).coerceIn(8.dp, 16.dp)
+            val dotColor = if (isOnline) Color(0xFF22C55E) else Color(0xFFEF4444)
             Box(
                 modifier = Modifier
                     .size(dotSize)
                     .clip(CircleShape)
-                    .background(Color(0xFF22C55E))
+                    .background(dotColor)
                     .border(1.5.dp, HundredGramDarkBackground, CircleShape)
                     .align(if (isVerified) Alignment.BottomStart else Alignment.BottomEnd)
             )
@@ -501,13 +502,10 @@ fun TextPostGraphicCard(
         else -> androidx.compose.ui.text.style.TextAlign.Center
     }
 
-    val authorName = post.authorDisplayName.ifBlank { post.authorUsername }
     val displayContent = if (post.text.isNotBlank()) {
         post.text
-    } else if (post.caption.contains("__ roar 🦁")) {
-        post.caption.ifBlank { "$authorName __ roar 🦁 Status" }
     } else {
-        "$authorName __ roar 🦁 ${post.caption.ifBlank { "Status" }}"
+        post.caption.ifBlank { "Status" }
     }
 
     Box(

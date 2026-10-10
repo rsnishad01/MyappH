@@ -55,6 +55,18 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.ui.graphics.asImageBitmap
+import com.example.util.QrCodeGenerator
+import com.example.util.QrCodeDecoder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.example.ui.components.ProfileShareAndQrSheet
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import coil.compose.SubcomposeAsyncImage
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.lazy.LazyRow
@@ -150,6 +162,8 @@ fun ProfileScreen(viewModel: MainViewModel) {
     var showProfileMenuSheet by remember { mutableStateOf(false) }
     var showPermissionsDialog by remember { mutableStateOf(false) }
     var showSoundSettingsDialog by remember { mutableStateOf(false) }
+    var showShareAndQrSheet by remember { mutableStateOf(false) }
+    var shareAndQrInitialTab by remember { mutableIntStateOf(0) }
     var showBlockedUsersDialog by remember { mutableStateOf(false) }
     var showReportedContentDialog by remember { mutableStateOf(false) }
     var showDashboardDialog by remember { mutableStateOf(false) }
@@ -174,6 +188,114 @@ fun ProfileScreen(viewModel: MainViewModel) {
         }
     }
 
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+
+    // Shared QR Code processor
+    fun handleScannedQrContent(rawScanned: String) {
+        val scanned = rawScanned.trim()
+        if (scanned.isBlank()) return
+        val targetIdOrUsername = when {
+            scanned.startsWith("hundredgram://profile/", ignoreCase = true) -> {
+                scanned.substringAfter("hundredgram://profile/").trim()
+            }
+            scanned.startsWith("https://hundredgram.app/u/", ignoreCase = true) -> {
+                scanned.substringAfter("https://hundredgram.app/u/").substringBefore("/").substringBefore("?").trim()
+            }
+            scanned.startsWith("https://hundredgram.app/profile/", ignoreCase = true) -> {
+                scanned.substringAfter("https://hundredgram.app/profile/").substringBefore("/").substringBefore("?").trim()
+            }
+            scanned.startsWith("hundredgram://", ignoreCase = true) -> {
+                scanned.substringAfter("hundredgram://").substringBefore("/").trim()
+            }
+            scanned.startsWith("@") -> {
+                scanned.removePrefix("@").trim()
+            }
+            else -> scanned
+        }
+
+        if (targetIdOrUsername.isNotBlank()) {
+            android.widget.Toast.makeText(context, "Profile found: $targetIdOrUsername! Opening...", android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.navigateTo(com.example.ui.ScreenDestination.CreatorProfile(targetIdOrUsername))
+        } else {
+            android.widget.Toast.makeText(context, "Invalid QR code (अमान्य QR कोड)", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Gallery Picker for QR Code Decoding
+    val galleryQrScannerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch(Dispatchers.IO) {
+                val decoded = QrCodeDecoder.decodeQrFromUri(context, uri)
+                withContext(Dispatchers.Main) {
+                    if (!decoded.isNullOrBlank()) {
+                        handleScannedQrContent(decoded)
+                    } else {
+                        android.widget.Toast.makeText(
+                            context,
+                            "No QR code found in selected image (चुनी गई इमेज में QR कोड नहीं मिला)",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        }
+    }
+
+    // Direct QR Code Scanner for Top Bar Button
+    val profileQrScanLauncher = rememberLauncherForActivityResult(
+        contract = ScanContract()
+    ) { result ->
+        val scanned = result.contents
+        if (!scanned.isNullOrBlank()) {
+            handleScannedQrContent(scanned)
+        }
+    }
+
+    val cameraPermissionForScanner = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val options = ScanOptions().apply {
+                setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                setPrompt("Scan a 100Gram Profile QR Code\n(प्रोफाइल QR कोड स्कैन करें)")
+                setCameraId(0)
+                setBeepEnabled(true)
+                setBarcodeImageEnabled(false)
+                setOrientationLocked(true)
+                setCaptureActivity(com.example.util.PortraitCaptureActivity::class.java)
+            }
+            profileQrScanLauncher.launch(options)
+        } else {
+            android.widget.Toast.makeText(
+                context,
+                "Camera permission denied. You can pick QR code from gallery instead (गैलरी से QR चुन सकते हैं)",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+            galleryQrScannerLauncher.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            )
+        }
+    }
+
+    fun launchDirectQrScanner() {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            val options = ScanOptions().apply {
+                setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                setPrompt("Scan a 100Gram Profile QR Code\n(प्रोफाइल QR कोड स्कैन करें)")
+                setCameraId(0)
+                setBeepEnabled(true)
+                setBarcodeImageEnabled(false)
+                setOrientationLocked(true)
+                setCaptureActivity(com.example.util.PortraitCaptureActivity::class.java)
+            }
+            profileQrScanLauncher.launch(options)
+        } else {
+            cameraPermissionForScanner.launch(android.Manifest.permission.CAMERA)
+        }
+    }
+
     val userPosts = remember(posts, currentUser.userId) {
         posts.filter { it.authorId == currentUser.userId }
     }
@@ -182,8 +304,13 @@ fun ProfileScreen(viewModel: MainViewModel) {
         reels.filter { it.authorId == currentUser.userId }
     }
 
-    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentUser.userId) {
+        if (currentUser.userId.isNotBlank()) {
+            viewModel.refreshFollowCounts()
+        }
+    }
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -191,6 +318,7 @@ fun ProfileScreen(viewModel: MainViewModel) {
             coroutineScope.launch {
                 isRefreshing = true
                 viewModel.refreshFeed()
+                viewModel.refreshFollowCounts()
                 delay(600)
                 isRefreshing = false
             }
@@ -222,6 +350,30 @@ fun ProfileScreen(viewModel: MainViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Quick QR Scanner Button (Scan Someone's Profile QR)
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(HundredGramCardElevated)
+                        .border(1.dp, HundredGramBorderSubtle.copy(alpha = 0.5f), CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = ripple(bounded = true, radius = 19.dp),
+                            onClick = {
+                                launchDirectQrScanner()
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.QrCodeScanner,
+                        contentDescription = "Scan QR Code (QR स्कैनर)",
+                        tint = HundredGramPink,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                
                 // Quick Sound Settings Button
                 Box(
                     modifier = Modifier
@@ -396,12 +548,23 @@ fun ProfileScreen(viewModel: MainViewModel) {
 
         // Bio Section
         Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) {
-            Text(
-                text = currentUser.displayName,
-                color = HundredGramTextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = currentUser.displayName,
+                    color = HundredGramTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+                if (currentUser.isVerified) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Default.Verified,
+                        contentDescription = "Verified Badge",
+                        tint = Color(0xFF3897F0),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
             if (currentUser.bio.isNotBlank()) {
                 Text(
                     text = currentUser.bio,
@@ -436,7 +599,10 @@ fun ProfileScreen(viewModel: MainViewModel) {
             )
             SecondaryActionButton(
                 text = "Share Profile",
-                onClick = { ShareManager.shareProfile(context, currentUser) },
+                onClick = {
+                    shareAndQrInitialTab = 0
+                    showShareAndQrSheet = true
+                },
                 modifier = Modifier.weight(1f),
                 height = 38.dp
             )
@@ -752,9 +918,11 @@ fun ProfileScreen(viewModel: MainViewModel) {
         EditProfileDialog(
             user = currentUser,
             viewModel = viewModel,
+            userPostsCount = userPosts.size,
+            userReelsCount = userReels.size,
             onDismiss = { showEditProfileDialog = false },
-            onSave = { name, username, bio, site, isPrivate, showOnlineStatus ->
-                viewModel.onUpdateProfile(name, username, bio, site, isPrivate, showOnlineStatus)
+            onSave = { name, username, bio, site, isPrivate, showOnlineStatus, isVerified ->
+                viewModel.onUpdateProfile(name, username, bio, site, isPrivate, showOnlineStatus, null, isVerified)
                 showEditProfileDialog = false
             }
         )
@@ -1054,6 +1222,15 @@ fun ProfileScreen(viewModel: MainViewModel) {
     if (showSoundSettingsDialog) {
         SoundSettingsDialog(
             onDismiss = { showSoundSettingsDialog = false }
+        )
+    }
+
+    if (showShareAndQrSheet) {
+        ProfileShareAndQrSheet(
+            user = currentUser,
+            viewModel = viewModel,
+            initialTab = shareAndQrInitialTab,
+            onDismiss = { showShareAndQrSheet = false }
         )
     }
 
@@ -1420,8 +1597,10 @@ fun ProfileStatColumn(count: Int, label: String, onClick: (() -> Unit)? = null) 
 fun EditProfileDialog(
     user: com.example.data.UserData,
     viewModel: MainViewModel,
+    userPostsCount: Int = 0,
+    userReelsCount: Int = 0,
     onDismiss: () -> Unit,
-    onSave: (name: String, username: String, bio: String, site: String, isPrivate: Boolean, showOnlineStatus: Boolean) -> Unit
+    onSave: (name: String, username: String, bio: String, site: String, isPrivate: Boolean, showOnlineStatus: Boolean, isVerified: Boolean) -> Unit
 ) {
     var name by remember { mutableStateOf(user.displayName) }
     var username by remember { mutableStateOf(user.username) }
@@ -1429,6 +1608,25 @@ fun EditProfileDialog(
     var site by remember { mutableStateOf(user.website) }
     var isPrivate by remember { mutableStateOf(user.isPrivate) }
     var showOnlineStatus by remember { mutableStateOf(user.showOnlineStatus) }
+
+    // Blue Tick Verification Requirements:
+    // 1. Follow 50 people
+    // 2. 50 Followers
+    // 3. 10 Reels
+    // 4. 10 Posts
+    val followingCount = user.followingCount
+    val followersCount = user.followersCount
+    val postsCount = maxOf(user.postsCount, userPostsCount)
+    val reelsCount = userReelsCount
+
+    val follow50Complete = followingCount >= 50
+    val followers50Complete = followersCount >= 50
+    val reels10Complete = reelsCount >= 10
+    val posts10Complete = postsCount >= 10
+
+    val allTasksCompleted = follow50Complete && followers50Complete && reels10Complete && posts10Complete
+    // Blue tick is ONLY allowed if all 4 tasks are completed
+    var isVerified by remember { mutableStateOf(user.isVerified && allTasksCompleted) }
 
     var usernameCheckMessage by remember { mutableStateOf("available ✓") }
     var isUsernameAvailable by remember { mutableStateOf(true) }
@@ -1440,14 +1638,19 @@ fun EditProfileDialog(
         shape = RoundedCornerShape(24.dp),
         title = {
             Text(
-                text = "Edit Profile",
+                text = "Edit Profile (प्रोफ़ाइल संपादित करें)",
                 color = HundredGramTextPrimary,
                 fontWeight = FontWeight.Bold,
                 fontSize = 19.sp
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -1538,6 +1741,139 @@ fun EditProfileDialog(
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
 
+                // Blue Tick Verification Section
+                androidx.compose.material3.Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                        containerColor = HundredGramCardElevated
+                    ),
+                    border = BorderStroke(
+                        1.dp,
+                        if (allTasksCompleted) Color(0xFF3897F0).copy(alpha = 0.6f) else HundredGramDivider.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Verified,
+                                contentDescription = "Verified Badge",
+                                tint = if (isVerified) Color(0xFF3897F0) else HundredGramTextSecondary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Blue Tick Verification (ब्ल्यू टिक)",
+                                    color = HundredGramTextPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.5.sp
+                                )
+                                Text(
+                                    text = if (allTasksCompleted) {
+                                        if (isVerified) "सक्रिय है (Active) ✓" else "टास्क पूरे हैं! चालू करें"
+                                    } else {
+                                        "टास्क पूरे होने पर ही ऑन होगा"
+                                    },
+                                    color = if (allTasksCompleted) Color(0xFF22C55E) else HundredGramTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            if (allTasksCompleted) {
+                                androidx.compose.material3.Switch(
+                                    checked = isVerified,
+                                    onCheckedChange = { isVerified = it },
+                                    colors = androidx.compose.material3.SwitchDefaults.colors(
+                                        checkedThumbColor = Color(0xFF3897F0),
+                                        checkedTrackColor = Color(0xFF3897F0).copy(alpha = 0.5f)
+                                    )
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFF2A2E3D))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "🔒 Locked",
+                                        color = HundredGramTextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+
+                        androidx.compose.material3.HorizontalDivider(color = HundredGramDivider.copy(alpha = 0.3f))
+
+                        Text(
+                            text = "Required Tasks for Blue Tick (ज़रूरी टास्क):",
+                            color = HundredGramTextSecondary,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+
+                        // Task 1: Follow 50 accounts
+                        VerificationTaskItem(
+                            title = "Follow 50 accounts (50 फॉलो करें)",
+                            current = followingCount,
+                            target = 50,
+                            isCompleted = follow50Complete
+                        )
+
+                        // Task 2: 50 Followers
+                        VerificationTaskItem(
+                            title = "Get 50 followers (50 फॉलोअर्स पाएं)",
+                            current = followersCount,
+                            target = 50,
+                            isCompleted = followers50Complete
+                        )
+
+                        // Task 3: 10 Reels
+                        VerificationTaskItem(
+                            title = "Upload 10 Reels (10 रील पोस्ट करें)",
+                            current = reelsCount,
+                            target = 10,
+                            isCompleted = reels10Complete
+                        )
+
+                        // Task 4: 10 Posts
+                        VerificationTaskItem(
+                            title = "Upload 10 Posts (10 पोस्ट अपलोड करें)",
+                            current = postsCount,
+                            target = 10,
+                            isCompleted = posts10Complete
+                        )
+
+                        if (allTasksCompleted) {
+                            Text(
+                                text = "🎉 बधाई! सभी 4 टास्क पूरे हो चुके हैं। आप ब्ल्यू टिक ऑन कर सकते हैं।",
+                                color = Color(0xFF22C55E),
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        } else {
+                            Text(
+                                text = "💡 सभी टास्क पूरे करने के बाद ही प्रोफाइल पर ब्ल्यू टिक मिलेगा।",
+                                color = HundredGramTextSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+
+                androidx.compose.material3.HorizontalDivider(
+                    color = HundredGramDivider.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+
                 Text(
                     text = "🔒 Privacy Options (प्राइवेसी ऑप्शंस)",
                     color = HundredGramPink,
@@ -1568,8 +1904,8 @@ fun EditProfileDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Online Status (🟢 ऑनलाइन स्टेटस)", color = HundredGramTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp)
-                        Text("Show green dot when active on HundredGram", color = HundredGramTextSecondary, fontSize = 11.5.sp)
+                        Text("Online Status (🟢/🔴 ऑनलाइन स्टेटस)", color = HundredGramTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp)
+                        Text("Active: Green dot (🟢), Offline: Red dot (🔴)", color = HundredGramTextSecondary, fontSize = 11.5.sp)
                     }
                     androidx.compose.material3.Switch(
                         checked = showOnlineStatus,
@@ -1587,7 +1923,8 @@ fun EditProfileDialog(
                 text = "Save Changes",
                 onClick = { 
                     if (isUsernameAvailable && username.isNotBlank()) {
-                        onSave(name, username, bio, site, isPrivate, showOnlineStatus) 
+                        val finalVerified = if (allTasksCompleted) isVerified else false
+                        onSave(name, username, bio, site, isPrivate, showOnlineStatus, finalVerified) 
                     }
                 },
                 height = 38.dp,
@@ -1600,6 +1937,68 @@ fun EditProfileDialog(
             }
         }
     )
+}
+
+@Composable
+private fun VerificationTaskItem(
+    title: String,
+    current: Int,
+    target: Int,
+    isCompleted: Boolean
+) {
+    val progress = (current.toFloat() / target.toFloat()).coerceIn(0f, 1f)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                if (isCompleted) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Completed",
+                        tint = Color(0xFF22C55E),
+                        modifier = Modifier.size(15.dp)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(15.dp)
+                            .border(1.5.dp, HundredGramTextSecondary.copy(alpha = 0.7f), CircleShape)
+                    )
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = title,
+                    color = if (isCompleted) HundredGramTextPrimary else HundredGramTextSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = if (isCompleted) FontWeight.SemiBold else FontWeight.Normal
+                )
+            }
+            Text(
+                text = "${minOf(current, target)}/$target",
+                color = if (isCompleted) Color(0xFF22C55E) else HundredGramPink,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        androidx.compose.material3.LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp)),
+            color = if (isCompleted) Color(0xFF22C55E) else HundredGramPink,
+            trackColor = HundredGramBorderSubtle.copy(alpha = 0.4f)
+        )
+    }
 }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -3271,6 +3670,67 @@ fun SoundSettingsDialog(
                         color = Color.White
                     )
                 }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = HundredGramPink),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text("Done (सहेजा गया)", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+    )
+}
+
+@Composable
+fun QrCodeDialog(
+    user: com.example.data.UserData,
+    onDismiss: () -> Unit
+) {
+    val qrCodeBitmap = remember(user.userId) {
+        QrCodeGenerator.generateQrCode("hundredgram://profile/${user.userId}")
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = HundredGramCardBackground,
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Text(
+                text = "My QR Code (मेरा QR)",
+                color = HundredGramTextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 19.sp
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                if (qrCodeBitmap != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = qrCodeBitmap.asImageBitmap(),
+                        contentDescription = "Profile QR Code",
+                        modifier = Modifier
+                            .size(250.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.White)
+                            .padding(8.dp)
+                    )
+                } else {
+                    Text("Could not generate QR code", color = Color.Red)
+                }
+                
+                Text(
+                    text = "@${user.username}",
+                    color = HundredGramTextSecondary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
         },
         confirmButton = {

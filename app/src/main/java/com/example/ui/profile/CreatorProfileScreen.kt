@@ -41,6 +41,7 @@ import com.example.data.PostEntity
 import com.example.data.ReelVideo
 import com.example.data.UserData
 import com.example.util.ShareManager
+import com.example.ui.components.ProfileShareAndQrSheet
 import com.example.ui.MainViewModel
 import com.example.ui.ScreenDestination
 import com.example.ui.components.UserAvatar
@@ -64,6 +65,8 @@ fun CreatorProfileScreen(viewModel: MainViewModel, userId: String) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val coroutineScope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
+    var showShareAndQrSheet by remember { mutableStateOf(false) }
+    var shareAndQrInitialTab by remember { mutableIntStateOf(0) }
 
     val posts by viewModel.posts.collectAsState()
     val reels by viewModel.reels.collectAsState()
@@ -76,11 +79,20 @@ fun CreatorProfileScreen(viewModel: MainViewModel, userId: String) {
         isLoading = true
         var foundUser: UserData? = null
 
+        // 1. First fetch latest user directly from Firestore
         try {
-            val allUsers = viewModel.repository.getAllUsers()
-            foundUser = allUsers.firstOrNull { it.userId == userId || it.username.equals(userId, ignoreCase = true) }
+            foundUser = viewModel.repository.firestoreRepository.getUserFromFirestore(userId)
         } catch (_: Exception) {}
 
+        // 2. If not found by document ID, search in all users
+        if (foundUser == null) {
+            try {
+                val allUsers = viewModel.repository.getAllUsers()
+                foundUser = allUsers.firstOrNull { it.userId == userId || it.username.equals(userId, ignoreCase = true) }
+            } catch (_: Exception) {}
+        }
+
+        // 3. Fallbacks from posts/reels
         if (foundUser == null) {
             val matchingPost = posts.firstOrNull { it.authorId == userId || it.authorUsername.equals(userId, ignoreCase = true) }
             if (matchingPost != null) {
@@ -90,8 +102,6 @@ fun CreatorProfileScreen(viewModel: MainViewModel, userId: String) {
                     displayName = matchingPost.authorDisplayName.ifBlank { matchingPost.authorUsername },
                     avatarUrl = matchingPost.authorAvatarUrl,
                     bio = "Creator on HundredGram ✨",
-                    followersCount = 0,
-                    followingCount = 0,
                     postsCount = posts.count { it.authorId == matchingPost.authorId }
                 )
             } else {
@@ -103,8 +113,6 @@ fun CreatorProfileScreen(viewModel: MainViewModel, userId: String) {
                         displayName = matchingReel.authorDisplayName.ifBlank { matchingReel.authorUsername },
                         avatarUrl = matchingReel.authorAvatarUrl,
                         bio = "Reels Creator on HundredGram 🎬",
-                        followersCount = 0,
-                        followingCount = 0,
                         postsCount = reels.count { it.authorId == matchingReel.authorId }
                     )
                 }
@@ -118,28 +126,30 @@ fun CreatorProfileScreen(viewModel: MainViewModel, userId: String) {
                 username = cleanName.ifBlank { "creator" },
                 displayName = cleanName.replaceFirstChar { it.uppercase() }.ifBlank { "Creator" },
                 avatarUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb",
-                bio = "Creator on HundredGram • Welcome to my profile! ✨",
-                followersCount = 0,
-                followingCount = 0,
-                postsCount = 0
+                bio = "Creator on HundredGram • Welcome to my profile! ✨"
             )
         }
+
+        // 4. Also fetch accurate followers and following list sizes for this creator
+        try {
+            val followers = viewModel.repository.firestoreRepository.getFollowersUserIdsOf(foundUser.userId)
+            val following = viewModel.repository.firestoreRepository.getFollowingUserIdsOf(foundUser.userId)
+            val isFollowedByMe = viewModel.followedUserIds.value.contains(foundUser.userId)
+            val currentUserId = viewModel.currentUser.value.userId
+            val adjustedFollowersCount = if (isFollowedByMe && currentUserId.isNotBlank() && !followers.contains(currentUserId)) {
+                followers.size + 1
+            } else {
+                followers.size
+            }
+            foundUser = foundUser.copy(
+                followersCount = maxOf(foundUser.followersCount, adjustedFollowersCount),
+                followingCount = maxOf(foundUser.followingCount, following.size)
+            )
+        } catch (_: Exception) {}
 
         creator = foundUser
         isLoading = false
         viewModel.checkIfFollowing(userId)
-
-        // 2. Non-blocking Firestore refresh in background
-        coroutineScope.launch {
-            try {
-                kotlinx.coroutines.withTimeoutOrNull(1500L) {
-                    val remote = viewModel.repository.firestoreRepository.getUserFromFirestore(userId)
-                    if (remote != null) {
-                        creator = remote
-                    }
-                }
-            } catch (_: Exception) {}
-        }
     }
 
     val creatorPosts = remember(posts, userId) {
@@ -203,13 +213,14 @@ fun CreatorProfileScreen(viewModel: MainViewModel, userId: String) {
                         DropdownMenuItem(
                             text = {
                                 Text(
-                                    "Share Profile (प्रोफाइल शेयर करें)",
+                                    "Share & QR Code (शेयर व QR कोड)",
                                     color = HundredGramTextPrimary
                                 )
                             },
                             onClick = {
                                 showOptionsMenu = false
-                                creator?.let { ShareManager.shareProfile(context, it) }
+                                shareAndQrInitialTab = 0
+                                showShareAndQrSheet = true
                             }
                         )
                         DropdownMenuItem(
@@ -305,6 +316,8 @@ fun CreatorProfileScreen(viewModel: MainViewModel, userId: String) {
                             avatarUrl = user.avatarUrl,
                             size = 76.dp,
                             isVerified = user.isVerified,
+                            isOnline = user.isOnline,
+                            showOnlineStatus = user.showOnlineStatus,
                             onClick = { showFullScreenAvatar = true }
                         )
 
@@ -360,6 +373,25 @@ fun CreatorProfileScreen(viewModel: MainViewModel, userId: String) {
                                 modifier = Modifier.size(16.dp)
                             )
                         }
+                    }
+                    // Status dot: Green for Online, Red for Offline
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 2.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(if (user.isOnline) Color(0xFF22C55E) else Color(0xFFEF4444))
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = if (user.isOnline) "ऑनलाइन (Online)" else "ऑफलाइन (Offline)",
+                            color = if (user.isOnline) Color(0xFF22C55E) else Color(0xFFEF4444),
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                     if (user.bio.isNotBlank()) {
                         Text(
@@ -446,7 +478,10 @@ fun CreatorProfileScreen(viewModel: MainViewModel, userId: String) {
                     }
 
                     IconButton(
-                        onClick = { ShareManager.shareProfile(context, user) },
+                        onClick = {
+                            shareAndQrInitialTab = 0
+                            showShareAndQrSheet = true
+                        },
                         modifier = Modifier
                             .size(44.dp)
                             .clip(RoundedCornerShape(12.dp))
@@ -852,6 +887,15 @@ fun CreatorProfileScreen(viewModel: MainViewModel, userId: String) {
                 }
             },
             viewModel = viewModel
+        )
+    }
+
+    if (showShareAndQrSheet && creator != null) {
+        ProfileShareAndQrSheet(
+            user = creator!!,
+            viewModel = viewModel,
+            initialTab = shareAndQrInitialTab,
+            onDismiss = { showShareAndQrSheet = false }
         )
     }
 }

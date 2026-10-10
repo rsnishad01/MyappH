@@ -320,30 +320,40 @@ fun SingleStoryView(
     ) {
         // Story Media Layer with graceful fallback to prevent any black box
         if (story.mediaUrl.isNotBlank()) {
-            val safeMediaUrl = remember(story.mediaUrl) {
-                com.example.util.ImageUtils.getSafeImageModel(story.mediaUrl)
+            val isVideo = story.isVideo || story.mediaUrl.contains(".mp4", ignoreCase = true) || story.mediaUrl.contains("/video/upload/", ignoreCase = true) || story.mediaUrl.endsWith(".mov", ignoreCase = true)
+            if (isVideo) {
+                com.example.ui.components.VideoPlayer(
+                    videoUrl = story.mediaUrl,
+                    isMuted = false,
+                    isPlaying = isCurrentPage && !isPaused,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                val safeMediaUrl = remember(story.mediaUrl) {
+                    com.example.util.ImageUtils.getSafeImageModel(story.mediaUrl)
+                }
+                SubcomposeAsyncImage(
+                    model = coil.request.ImageRequest.Builder(LocalContext.current)
+                        .data(safeMediaUrl)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = story.caption.ifBlank { "Story by @${story.username}" },
+                    contentScale = ContentScale.Crop,
+                    loading = {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = HundredGramPink,
+                                modifier = Modifier.size(36.dp),
+                                strokeWidth = 3.dp
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
             }
-            SubcomposeAsyncImage(
-                model = coil.request.ImageRequest.Builder(LocalContext.current)
-                    .data(safeMediaUrl)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = story.caption.ifBlank { "Story by @${story.username}" },
-                contentScale = ContentScale.Crop,
-                loading = {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            color = HundredGramPink,
-                            modifier = Modifier.size(36.dp),
-                            strokeWidth = 3.dp
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
         } else {
             // Text story fallback
             Box(

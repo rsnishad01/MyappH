@@ -43,6 +43,8 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VolumeMute
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
@@ -109,6 +111,9 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import com.example.ui.ads.NativeAdCard
+import com.google.android.gms.ads.nativead.NativeAd
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -217,6 +222,7 @@ fun FeedScreen(viewModel: MainViewModel) {
     var blockTargetPost by remember { mutableStateOf<PostEntity?>(null) }
     var postForLikesList by remember { mutableStateOf<PostEntity?>(null) }
     var hiddenAdIds by remember { mutableStateOf(setOf<String>()) }
+    var nativeAds by remember { mutableStateOf(mapOf<String, NativeAd>()) }
     var activeAdDetail by remember { mutableStateOf<FeedAdItem?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
@@ -361,22 +367,45 @@ fun FeedScreen(viewModel: MainViewModel) {
 
                     // Sponsored Native Ad item inserted after every 4 posts/reels
                     if ((index + 1) % 4 == 0) {
-                        val adIndex = ((index + 1) / 4 - 1) % SampleFeedAds.size
-                        val ad = SampleFeedAds[adIndex].copy(id = "ad_post_${index}_${SampleFeedAds[adIndex].id}")
-                        if (!hiddenAdIds.contains(ad.id)) {
-                            SponsoredFeedAdCard(
-                                ad = ad,
-                                onCtaClick = { activeAdDetail = ad },
-                                onHideAd = { hiddenAdIds = hiddenAdIds + ad.id },
-                                onShareAd = {
-                                    val sendIntent = Intent().apply {
-                                        action = Intent.ACTION_SEND
-                                        putExtra(Intent.EXTRA_TEXT, "${ad.adTitle} - ${ad.ctaText}: ${ad.ctaUrl}")
-                                        type = "text/plain"
+                        val adKey = "ad_$index"
+                        val nativeAd = nativeAds[adKey]
+
+                        LaunchedEffect(adKey) {
+                            if (nativeAd == null) {
+                                com.example.util.AdsManager.loadNativeFeedAd(
+                                    context = context,
+                                    onAdLoaded = { ad ->
+                                        nativeAds = nativeAds + (adKey to ad)
+                                    },
+                                    onAdFailed = { /* handled gracefully */ }
+                                )
+                            }
+                        }
+
+                        if (nativeAd != null) {
+                            NativeAdCard(nativeAd = nativeAd)
+                        } else {
+                            val sampleAdIndex = ((index / 4) % SampleFeedAds.size)
+                            val sampleAd = SampleFeedAds[sampleAdIndex]
+                            if (!hiddenAdIds.contains(sampleAd.id)) {
+                                SponsoredFeedAdCard(
+                                    ad = sampleAd,
+                                    onCtaClick = {
+                                        activeAdDetail = sampleAd
+                                    },
+                                    onHideAd = {
+                                        hiddenAdIds = hiddenAdIds + sampleAd.id
+                                    },
+                                    onShareAd = {
+                                        val sendIntent = android.content.Intent().apply {
+                                            action = android.content.Intent.ACTION_SEND
+                                            putExtra(android.content.Intent.EXTRA_TEXT, "Check out ${sampleAd.adTitle} on HundredGram! ${sampleAd.ctaUrl}")
+                                            type = "text/plain"
+                                        }
+                                        context.startActivity(android.content.Intent.createChooser(sendIntent, "Share Ad"))
                                     }
-                                    context.startActivity(Intent.createChooser(sendIntent, "Share Sponsored Ad"))
-                                }
-                            )
+                                )
+                            }
                         }
                     }
                 }
@@ -643,7 +672,8 @@ fun StoriesRow(
                         avatarUrl = currentUser.avatarUrl,
                         size = 44.dp,
                         hasActiveStory = hasMyStories,
-                        isSeen = false
+                        isSeen = false,
+                        showOnlineStatus = false
                     )
                     // Add Story / Story Count Badge
                     Box(
@@ -697,7 +727,8 @@ fun StoriesRow(
                         avatarUrl = firstStory.userAvatarUrl,
                         size = 44.dp,
                         hasActiveStory = true,
-                        isSeen = isAllSeen
+                        isSeen = isAllSeen,
+                        showOnlineStatus = false
                     )
                     if (userStories.size > 1) {
                         Box(
@@ -1015,13 +1046,32 @@ fun PostCard(
                     modifier = Modifier.fillMaxSize()
                 )
             } else if (isVideo) {
+                var isVideoMuted by remember { mutableStateOf(false) }
                 val videoUrl = if (post.mediaUrl.isNotBlank()) post.mediaUrl else post.imageUrl
-                com.example.ui.components.VideoPlayer(
-                    videoUrl = videoUrl,
-                    isMuted = true,
-                    fallbackImageUrl = videoUrl,
-                    modifier = Modifier.fillMaxSize()
-                )
+                Box(modifier = Modifier.fillMaxSize()) {
+                    com.example.ui.components.VideoPlayer(
+                        videoUrl = videoUrl,
+                        isMuted = isVideoMuted,
+                        isPlaying = true,
+                        fallbackImageUrl = videoUrl,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    IconButton(
+                        onClick = { isVideoMuted = !isVideoMuted },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(12.dp)
+                            .size(36.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = if (isVideoMuted) Icons.Default.VolumeMute else Icons.Default.VolumeUp,
+                            contentDescription = "Mute Toggle",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
             } else {
                 coil.compose.SubcomposeAsyncImage(
                     model = coil.request.ImageRequest.Builder(LocalContext.current)

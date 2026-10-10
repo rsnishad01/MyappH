@@ -24,7 +24,7 @@ data class UserData(
     val dob: String = "",
     val isTermsAccepted: Boolean = false,
     val isPrivate: Boolean = false,
-    val isOnline: Boolean = true,
+    val isOnline: Boolean = false,
     val showOnlineStatus: Boolean = true,
     val email: String = "ssir6921@gmail.com",
     val isDeactivated: Boolean = false,

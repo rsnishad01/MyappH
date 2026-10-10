@@ -70,7 +70,7 @@ class GoogleAuthManager(private val context: Context) {
                         followersCount = 0,
                         followingCount = 0,
                         postsCount = 0,
-                        isVerified = true
+                        isVerified = false
                     )
                     return@withContext Result.success(user)
                 }
@@ -82,13 +82,13 @@ class GoogleAuthManager(private val context: Context) {
                 userId = account.id ?: "g_${System.currentTimeMillis() % 100000}",
                 username = email.substringBefore("@").lowercase(),
                 displayName = account.displayName ?: "Google User",
-                bio = "Verified Google Creator ✨",
+                bio = "HundredGram Creator ✨",
                 avatarUrl = account.photoUrl?.toString() ?: "",
                 email = email,
                 followersCount = 0,
                 followingCount = 0,
                 postsCount = 0,
-                isVerified = true
+                isVerified = false
             )
             Result.success(user)
         } catch (e: Exception) {
@@ -99,13 +99,13 @@ class GoogleAuthManager(private val context: Context) {
                     userId = lastAccount.id ?: "g_${System.currentTimeMillis() % 100000}",
                     username = emailVal.substringBefore("@").lowercase(),
                     displayName = lastAccount.displayName ?: "Google Creator",
-                    bio = "Verified Google Creator ✨",
+                    bio = "HundredGram Creator ✨",
                     avatarUrl = lastAccount.photoUrl?.toString() ?: "",
                     email = emailVal,
                     followersCount = 0,
                     followingCount = 0,
                     postsCount = 0,
-                    isVerified = true
+                    isVerified = false
                 )
                 Result.success(user)
             } else {
@@ -121,12 +121,12 @@ class GoogleAuthManager(private val context: Context) {
                 userId = lastAccount.id ?: "g_${System.currentTimeMillis() % 100000}",
                 username = (lastAccount.email?.substringBefore("@") ?: "google_user").lowercase(),
                 displayName = lastAccount.displayName ?: "Google Member",
-                bio = "Verified Google Member ✨",
+                bio = "HundredGram Member ✨",
                 avatarUrl = lastAccount.photoUrl?.toString() ?: "",
                 followersCount = 0,
                 followingCount = 0,
                 postsCount = 0,
-                isVerified = true
+                isVerified = false
             )
             Result.success(user)
         } else {

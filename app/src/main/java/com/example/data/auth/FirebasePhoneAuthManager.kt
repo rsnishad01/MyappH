@@ -60,7 +60,7 @@ class FirebasePhoneAuthManager(
                         followersCount = 0,
                         followingCount = 0,
                         postsCount = 0,
-                        isVerified = true
+                        isVerified = false
                     )
                     Result.success(user)
                 } else {

@@ -115,17 +115,26 @@ class FirestoreRepository(private val context: Context) {
                 "displayName" to user.displayName,
                 "bio" to user.bio,
                 "avatarUrl" to user.avatarUrl,
-                "followersCount" to user.followersCount,
-                "followingCount" to user.followingCount,
                 "postsCount" to user.postsCount,
                 "isVerified" to user.isVerified,
                 "website" to user.website,
                 "location" to user.location,
                 "email" to user.email,
+                "isPrivate" to user.isPrivate,
+                "isOnline" to user.isOnline,
+                "showOnlineStatus" to user.showOnlineStatus,
                 "isDeactivated" to user.isDeactivated,
                 "deactivationTimestamp" to user.deactivationTimestamp,
-                "lastLoginAt" to System.currentTimeMillis()
+                "lastLoginAt" to System.currentTimeMillis(),
+                "lastActiveAt" to System.currentTimeMillis()
             )
+            // Preserve/update counts safely
+            if (user.followersCount > 0) {
+                userMap["followersCount"] = user.followersCount
+            }
+            if (user.followingCount > 0) {
+                userMap["followingCount"] = user.followingCount
+            }
             Log.d(TAG, "Writing user profile to Firestore /users/${user.userId}, avatarUrl=${user.avatarUrl}")
             firestore?.collection("users")?.document(user.userId)?.set(userMap, SetOptions.merge())?.await()
             Log.d(TAG, "User profile successfully saved to Firestore.")
@@ -153,18 +162,40 @@ class FirestoreRepository(private val context: Context) {
             val doc = firestore?.collection("users")?.document(userId)?.get()?.await()
             if (doc != null && doc.exists()) {
                 val data = doc.data ?: return@withContext null
+                val followedByList = (doc.get("followedBy") as? List<String>) ?: emptyList()
+                val followingList = (doc.get("followingList") as? List<String>) ?: emptyList()
+                val explicitFollowers = (data["followersCount"] as? Number)?.toInt() ?: 0
+                val explicitFollowing = (data["followingCount"] as? Number)?.toInt() ?: 0
+                val followersCount = maxOf(explicitFollowers, followedByList.size)
+                val followingCount = maxOf(explicitFollowing, followingList.size)
+                val rawPostsCount = (data["postsCount"] as? Number)?.toInt() ?: 0
+                val rawVerified = (data["isVerified"] as? Boolean) ?: false
+                // Blue tick requirement: 50 following, 50 followers, 10 posts
+                val meetsTasks = followingCount >= 50 && followersCount >= 50 && rawPostsCount >= 10
+                val isVerified = rawVerified && meetsTasks
+
+                val lastActiveAt = (data["lastActiveAt"] as? Number)?.toLong() ?: (data["lastLoginAt"] as? Number)?.toLong() ?: 0L
+                val isOnlineRaw = (data["isOnline"] as? Boolean) ?: false
+                val currentAuthUid = try { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid } catch (e: Exception) { null }
+                val isSelf = doc.id == currentAuthUid
+                // Current user is using the app right now (online); other users online only if active within last 3 minutes
+                val isOnline = if (isSelf) true else (isOnlineRaw && lastActiveAt > 0L && (System.currentTimeMillis() - lastActiveAt < 3 * 60 * 1000L))
                 return@withContext UserData(
                     userId = doc.id,
                     username = (data["username"] as? String) ?: "user",
                     displayName = (data["displayName"] as? String) ?: "Creator",
                     bio = (data["bio"] as? String) ?: "",
                     avatarUrl = (data["avatarUrl"] as? String) ?: "",
-                    followersCount = (data["followersCount"] as? Number)?.toInt() ?: 0,
-                    followingCount = (data["followingCount"] as? Number)?.toInt() ?: 0,
-                    postsCount = (data["postsCount"] as? Number)?.toInt() ?: 0,
-                    isVerified = (data["isVerified"] as? Boolean) ?: false,
+                    followersCount = followersCount,
+                    followingCount = followingCount,
+                    postsCount = rawPostsCount,
+                    isVerified = isVerified,
                     website = (data["website"] as? String) ?: "",
-                    location = (data["location"] as? String) ?: ""
+                    location = (data["location"] as? String) ?: "",
+                    isPrivate = (data["isPrivate"] as? Boolean) ?: false,
+                    isOnline = isOnline,
+                    showOnlineStatus = (data["showOnlineStatus"] as? Boolean) ?: true,
+                    email = (data["email"] as? String) ?: ""
                 )
             }
         } catch (e: Exception) {
@@ -477,18 +508,33 @@ class FirestoreRepository(private val context: Context) {
             val snapshot = db.collection("users").limit(10).get().await()
             for (doc in snapshot.documents) {
                 val data = doc.data ?: continue
+                val followersCount = (data["followersCount"] as? Number)?.toInt() ?: 0
+                val followingCount = (data["followingCount"] as? Number)?.toInt() ?: 0
+                val postsCount = (data["postsCount"] as? Number)?.toInt() ?: 0
+                val rawVerified = (data["isVerified"] as? Boolean) ?: false
+                val meetsTasks = followingCount >= 50 && followersCount >= 50 && postsCount >= 10
+                val isVerified = rawVerified && meetsTasks
+
+                val lastActiveAt = (data["lastActiveAt"] as? Number)?.toLong() ?: (data["lastLoginAt"] as? Number)?.toLong() ?: 0L
+                val isOnlineRaw = (data["isOnline"] as? Boolean) ?: false
+                val currentAuthUid = try { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid } catch (e: Exception) { null }
+                val isSelf = doc.id == currentAuthUid
+                val isOnline = if (isSelf) true else (isOnlineRaw && lastActiveAt > 0L && (System.currentTimeMillis() - lastActiveAt < 3 * 60 * 1000L))
+
                 list.add(UserData(
                     userId = doc.id,
                     username = (data["username"] as? String) ?: "user",
                     displayName = (data["displayName"] as? String) ?: "Creator",
                     bio = (data["bio"] as? String) ?: "",
                     avatarUrl = (data["avatarUrl"] as? String) ?: "",
-                    followersCount = (data["followersCount"] as? Number)?.toInt() ?: 0,
-                    followingCount = (data["followingCount"] as? Number)?.toInt() ?: 0,
-                    postsCount = (data["postsCount"] as? Number)?.toInt() ?: 0,
-                    isVerified = (data["isVerified"] as? Boolean) ?: false,
+                    followersCount = followersCount,
+                    followingCount = followingCount,
+                    postsCount = postsCount,
+                    isVerified = isVerified,
                     website = (data["website"] as? String) ?: "",
-                    location = (data["location"] as? String) ?: ""
+                    location = (data["location"] as? String) ?: "",
+                    isOnline = isOnline,
+                    showOnlineStatus = (data["showOnlineStatus"] as? Boolean) ?: true
                 ))
             }
         } catch (e: Exception) {
@@ -579,39 +625,51 @@ class FirestoreRepository(private val context: Context) {
             val db = firestore ?: return@withContext false
             val userRef = db.collection("users").document(targetUserId)
             val doc = userRef.get().await()
-            if (doc.exists()) {
-                val data = doc.data ?: return@withContext false
-                val followers = (data["followersCount"] as? Number)?.toInt() ?: 0
-                val followingList = doc.get("followedBy") as? List<String> ?: emptyList()
-                
-                val isFollowingNow = if (followingList.contains(currentUserId)) {
-                    userRef.update(
-                        "followersCount", (followers - 1).coerceAtLeast(0),
-                        "followedBy", followingList - currentUserId
-                    ).await()
-                    false
-                } else {
-                    userRef.update(
-                        "followersCount", followers + 1,
-                        "followedBy", followingList + currentUserId
-                    ).await()
-                    true
-                }
-                
-                val currentUserRef = db.collection("users").document(currentUserId)
-                val currDoc = currentUserRef.get().await()
-                if (currDoc.exists()) {
-                    val currFollowing = (currDoc.data?.get("followingCount") as? Number)?.toInt() ?: 0
-                    val currFollowingList = currDoc.get("followingList") as? List<String> ?: emptyList()
-                    val newFollowingList = if (isFollowingNow) (currFollowingList + targetUserId).distinct() else currFollowingList - targetUserId
-                    currentUserRef.update(
-                        "followingCount", if (isFollowingNow) currFollowing + 1 else (currFollowing - 1).coerceAtLeast(0),
-                        "followingList", newFollowingList
-                    ).await()
-                }
-                
-                return@withContext isFollowingNow
+            val followedByList = if (doc.exists()) {
+                (doc.get("followedBy") as? List<String>) ?: emptyList()
+            } else {
+                emptyList()
             }
+            
+            val isFollowingNow = !followedByList.contains(currentUserId)
+            val newFollowedByList = if (isFollowingNow) {
+                (followedByList + currentUserId).distinct()
+            } else {
+                followedByList - currentUserId
+            }
+            val newFollowersCount = newFollowedByList.size
+
+            userRef.set(
+                hashMapOf(
+                    "userId" to targetUserId,
+                    "followersCount" to newFollowersCount,
+                    "followedBy" to newFollowedByList
+                ), SetOptions.merge()
+            ).await()
+
+            val currentUserRef = db.collection("users").document(currentUserId)
+            val currDoc = currentUserRef.get().await()
+            val currFollowingList = if (currDoc.exists()) {
+                (currDoc.get("followingList") as? List<String>) ?: emptyList()
+            } else {
+                emptyList()
+            }
+            val newFollowingList = if (isFollowingNow) {
+                (currFollowingList + targetUserId).distinct()
+            } else {
+                currFollowingList - targetUserId
+            }
+            val newFollowingCount = newFollowingList.size
+
+            currentUserRef.set(
+                hashMapOf(
+                    "userId" to currentUserId,
+                    "followingCount" to newFollowingCount,
+                    "followingList" to newFollowingList
+                ), SetOptions.merge()
+            ).await()
+
+            return@withContext isFollowingNow
         } catch (e: Exception) {
             Log.e(TAG, "Error toggling follow: ${e.message}")
         }
@@ -888,17 +946,38 @@ class FirestoreRepository(private val context: Context) {
             val snapshot = db.collection("users").get().await()
             for (doc in snapshot.documents) {
                 val data = doc.data ?: continue
+                val followedByList = (doc.get("followedBy") as? List<String>) ?: emptyList()
+                val followingList = (doc.get("followingList") as? List<String>) ?: emptyList()
+                val explicitFollowers = (data["followersCount"] as? Number)?.toInt() ?: 0
+                val explicitFollowing = (data["followingCount"] as? Number)?.toInt() ?: 0
+                val followersCount = maxOf(explicitFollowers, followedByList.size)
+                val followingCount = maxOf(explicitFollowing, followingList.size)
+                val rawPostsCount = (data["postsCount"] as? Number)?.toInt() ?: 0
+                val rawVerified = (data["isVerified"] as? Boolean) ?: false
+                val meetsTasks = followingCount >= 50 && followersCount >= 50 && rawPostsCount >= 10
+                val isVerified = rawVerified && meetsTasks
+
+                val lastActiveAt = (data["lastActiveAt"] as? Number)?.toLong() ?: (data["lastLoginAt"] as? Number)?.toLong() ?: 0L
+                val isOnlineRaw = (data["isOnline"] as? Boolean) ?: false
+                val currentAuthUid = try { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid } catch (e: Exception) { null }
+                val isSelf = doc.id == currentAuthUid
+                val isOnline = if (isSelf) true else (isOnlineRaw && lastActiveAt > 0L && (System.currentTimeMillis() - lastActiveAt < 3 * 60 * 1000L))
                 list.add(UserData(
                     userId = doc.id,
                     username = (data["username"] as? String) ?: "",
                     displayName = (data["displayName"] as? String) ?: "User",
                     bio = (data["bio"] as? String) ?: "",
                     avatarUrl = (data["avatarUrl"] as? String) ?: "",
-                    followersCount = (data["followersCount"] as? Number)?.toInt() ?: 0,
-                    followingCount = (data["followingCount"] as? Number)?.toInt() ?: 0,
-                    isVerified = (data["isVerified"] as? Boolean) ?: false,
-                    isOnline = (data["isOnline"] as? Boolean) ?: true,
-                    showOnlineStatus = (data["showOnlineStatus"] as? Boolean) ?: true
+                    followersCount = followersCount,
+                    followingCount = followingCount,
+                    postsCount = rawPostsCount,
+                    isVerified = isVerified,
+                    website = (data["website"] as? String) ?: "",
+                    location = (data["location"] as? String) ?: "",
+                    isPrivate = (data["isPrivate"] as? Boolean) ?: false,
+                    isOnline = isOnline,
+                    showOnlineStatus = (data["showOnlineStatus"] as? Boolean) ?: true,
+                    email = (data["email"] as? String) ?: ""
                 ))
             }
         } catch (e: Exception) {

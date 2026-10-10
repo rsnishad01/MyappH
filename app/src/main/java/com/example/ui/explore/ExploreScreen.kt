@@ -557,7 +557,13 @@ fun ExploreScreen(viewModel: MainViewModel) {
                         Spacer(modifier = Modifier.height(4.dp))
 
                         // Avatar
-                        UserAvatar(avatarUrl = detailUser.avatarUrl, size = 80.dp)
+                        UserAvatar(
+                            avatarUrl = detailUser.avatarUrl,
+                            size = 80.dp,
+                            isVerified = detailUser.isVerified,
+                            isOnline = detailUser.isOnline,
+                            showOnlineStatus = detailUser.showOnlineStatus
+                        )
 
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -707,7 +713,13 @@ fun SearchCreatorCard(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            UserAvatar(avatarUrl = user.avatarUrl, size = 48.dp)
+            UserAvatar(
+                avatarUrl = user.avatarUrl,
+                size = 48.dp,
+                isVerified = user.isVerified,
+                isOnline = user.isOnline,
+                showOnlineStatus = user.showOnlineStatus
+            )
 
             Spacer(modifier = Modifier.width(12.dp))
 

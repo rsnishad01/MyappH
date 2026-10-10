@@ -250,8 +250,10 @@ fun ReelsScreen(viewModel: MainViewModel) {
                     val reelIndex = page - adCount
                     if (reelIndex in reels.indices) {
                         val reel = reels[reelIndex]
+                        val isCurrentPage = (pagerState.currentPage == page)
                         ReelItem(
                             reel = reel,
+                            isCurrentPage = isCurrentPage,
                             isMuted = playbackInfo.isMuted,
                             onLike = { viewModel.onLikeReel(reel.id) },
                             onLikesClick = { reelForLikesList = reel },
@@ -356,6 +358,7 @@ fun ReelsScreen(viewModel: MainViewModel) {
 @Composable
 fun ReelItem(
     reel: ReelVideo,
+    isCurrentPage: Boolean = true,
     isMuted: Boolean,
     onLike: () -> Unit,
     onLikesClick: () -> Unit = {},
@@ -379,6 +382,10 @@ fun ReelItem(
         }
     }
 
+    val hasCustomAudio = reel.audioTitle.isNotBlank()
+    val effectiveMuted = isMuted || hasCustomAudio
+    val effectivePlaying = isPlaying && isCurrentPage
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -397,8 +404,8 @@ fun ReelItem(
         if (mediaToPlay.isNotBlank()) {
             com.example.ui.components.VideoPlayer(
                 videoUrl = mediaToPlay,
-                isMuted = isMuted,
-                isPlaying = isPlaying,
+                isMuted = effectiveMuted,
+                isPlaying = effectivePlaying,
                 fallbackImageUrl = fallbackThumb,
                 modifier = Modifier.fillMaxSize()
             )

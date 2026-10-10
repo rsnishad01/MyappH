@@ -145,11 +145,28 @@ class SocialRepository(private val context: Context) {
             if (_isLoggedIn.value && current.userId.isNotBlank()) {
                 enableFcmDynamically()
                 val savedProfile = firestoreRepository.getUserFromFirestore(current.userId)
+                val userPostCount = _posts.value.count { it.authorId == current.userId }
+                val userReelCount = _reels.value.count { it.authorId == current.userId }
+                val following = savedProfile?.followingCount ?: current.followingCount
+                val followers = savedProfile?.followersCount ?: current.followersCount
+                val meetsTasks = following >= 50 && followers >= 50 && userPostCount >= 10 && userReelCount >= 10
+
                 if (savedProfile != null) {
-                    _currentUser.value = savedProfile
+                    val validatedProfile = savedProfile.copy(
+                        isVerified = if (meetsTasks) savedProfile.isVerified else false,
+                        isOnline = true
+                    )
+                    _currentUser.value = validatedProfile
+                    firestoreRepository.syncUserToFirestore(validatedProfile)
                 } else {
-                    firestoreRepository.syncUserToFirestore(current)
+                    val validatedProfile = current.copy(
+                        isVerified = if (meetsTasks) current.isVerified else false,
+                        isOnline = true
+                    )
+                    _currentUser.value = validatedProfile
+                    firestoreRepository.syncUserToFirestore(validatedProfile)
                 }
+                updateFollowedUserIds()
                 startListeningToNotificationsForUser(current.userId)
             }
         }
@@ -232,23 +249,47 @@ class SocialRepository(private val context: Context) {
     }
 
     fun loginUser(user: UserData) {
-        _currentUser.value = user
+        val activeUser = user.copy(isOnline = true)
+        _currentUser.value = activeUser
         _isLoggedIn.value = true
         enableFcmDynamically()
         scope.launch {
-            firestoreRepository.syncUserToFirestore(user)
+            val savedProfile = firestoreRepository.getUserFromFirestore(user.userId)
+            val userPostCount = _posts.value.count { it.authorId == user.userId }
+            val userReelCount = _reels.value.count { it.authorId == user.userId }
+            val following = savedProfile?.followingCount ?: user.followingCount
+            val followers = savedProfile?.followersCount ?: user.followersCount
+            val meetsTasks = following >= 50 && followers >= 50 && userPostCount >= 10 && userReelCount >= 10
+            val targetProfile = (savedProfile ?: activeUser).let { prof ->
+                prof.copy(
+                    isVerified = if (meetsTasks) prof.isVerified else false,
+                    isOnline = true
+                )
+            }
+            _currentUser.value = targetProfile
+            firestoreRepository.syncUserToFirestore(targetProfile)
+            updateFollowedUserIds()
         }
         startListeningToNotificationsForUser(user.userId)
         startListeningForIncomingCalls(user.userId)
     }
 
     fun logoutUser() {
+        val curr = _currentUser.value
+        if (curr.userId.isNotBlank()) {
+            scope.launch {
+                try {
+                    firestoreRepository.syncUserToFirestore(curr.copy(isOnline = false))
+                } catch (_: Exception) {}
+            }
+        }
         try {
             FirebaseAuth.getInstance().signOut()
         } catch (_: Exception) {}
         firestoreRepository.stopListeningToNotifications()
         stopListeningForIncomingCalls()
         _notifications.value = emptyList()
+        _followedUserIds.value = emptySet()
         _currentUser.value = createGuestUserData()
         _isLoggedIn.value = false
     }
@@ -386,6 +427,7 @@ class SocialRepository(private val context: Context) {
             followingCount = 0,
             postsCount = 0,
             isVerified = false,
+            isOnline = false,
             website = "",
             location = ""
         )
@@ -409,6 +451,7 @@ class SocialRepository(private val context: Context) {
                 followingCount = 0,
                 postsCount = 0,
                 isVerified = false,
+                isOnline = true,
                 website = "",
                 location = ""
             )
@@ -539,6 +582,18 @@ class SocialRepository(private val context: Context) {
         _reels.value = updated
     }
 
+    fun setFollowedUserIds(ids: Set<String>) {
+        _followedUserIds.value = ids
+    }
+
+    fun updateCurrentUserFollowCounts(following: Int, followers: Int) {
+        val current = _currentUser.value
+        _currentUser.value = current.copy(
+            followingCount = following,
+            followersCount = followers
+        )
+    }
+
     suspend fun toggleFollowUser(targetUserId: String): Boolean {
         val currentUserId = _currentUser.value.userId.ifBlank { "usr_me" }
         if (targetUserId.isBlank() || targetUserId == currentUserId) return false
@@ -554,7 +609,7 @@ class SocialRepository(private val context: Context) {
         _followedUserIds.value = currentSet
 
         val localUser = _currentUser.value
-        val newFollowingCount = if (willFollow) localUser.followingCount + 1 else (localUser.followingCount - 1).coerceAtLeast(0)
+        val newFollowingCount = currentSet.size
         _currentUser.value = localUser.copy(
             userId = if (localUser.userId.isBlank()) currentUserId else localUser.userId,
             followingCount = newFollowingCount
@@ -563,10 +618,16 @@ class SocialRepository(private val context: Context) {
         // 2. Sync to Firestore in background
         try {
             val isFollowingNow = firestoreRepository.toggleFollowUserInFirestore(targetUserId, currentUserId)
-            if (isFollowingNow || willFollow) {
-                return true
+            val remoteFollowing = firestoreRepository.getFollowingUserIdsOf(currentUserId)
+            if (remoteFollowing.isNotEmpty() || !willFollow) {
+                val merged = remoteFollowing.filter { it.isNotBlank() && it != currentUserId }.toSet()
+                _followedUserIds.value = merged
+                _currentUser.value = _currentUser.value.copy(followingCount = merged.size)
             }
-        } catch (_: Exception) {}
+            return isFollowingNow
+        } catch (e: Exception) {
+            Log.e("SocialRepository", "Error syncing follow state to Firestore: ${e.message}")
+        }
         return willFollow
     }
 
@@ -581,12 +642,17 @@ class SocialRepository(private val context: Context) {
         val currentUserId = _currentUser.value.userId
         if (currentUserId.isBlank()) return
         try {
-            val allUsers = getAllUsers()
-            val followed = allUsers.filter { user ->
-                user.userId != currentUserId && isUserFollowing(user.userId, currentUserId)
-            }.map { it.userId }.toSet()
-            _followedUserIds.value = followed
-        } catch (_: Exception) {}
+            val remoteFollowing = firestoreRepository.getFollowingUserIdsOf(currentUserId)
+            val remoteFollowers = firestoreRepository.getFollowersUserIdsOf(currentUserId)
+            val mergedFollowing = (_followedUserIds.value + remoteFollowing).filter { it.isNotBlank() && it != currentUserId }.toSet()
+            _followedUserIds.value = mergedFollowing
+            _currentUser.value = _currentUser.value.copy(
+                followingCount = mergedFollowing.size,
+                followersCount = maxOf(_currentUser.value.followersCount, remoteFollowers.size)
+            )
+        } catch (e: Exception) {
+            Log.e("SocialRepository", "Error updating followed user IDs: ${e.message}")
+        }
     }
 
     suspend fun getAllUsers(): List<UserData> {
@@ -595,37 +661,123 @@ class SocialRepository(private val context: Context) {
     }
 
     suspend fun getFollowersOrFollowing(targetUserId: String, isFollowingTab: Boolean): List<UserData> {
-        val allUsers = getAllUsers()
         val currentUserId = _currentUser.value.userId.ifBlank { "usr_me" }
+        val targetId = if (targetUserId.isBlank()) currentUserId else targetUserId
+        val isSelf = (targetId == currentUserId)
         val myFollowedUserIds = _followedUserIds.value
 
-        val isSelf = targetUserId.isBlank() || targetUserId == currentUserId
-
-        if (isFollowingTab) {
-            // FOLLOWING TAB
+        // 1. Determine target list of user IDs for the tab
+        val targetUserIds: List<String> = if (isFollowingTab) {
+            // FOLLOWING TAB: Who does targetId follow?
             if (isSelf) {
-                return allUsers.filter { user -> myFollowedUserIds.contains(user.userId) && user.userId != currentUserId }
+                val remoteFollowing = firestoreRepository.getFollowingUserIdsOf(currentUserId)
+                val merged = (myFollowedUserIds + remoteFollowing).filter { it.isNotBlank() && it != currentUserId }.distinct()
+                _followedUserIds.value = merged.toSet()
+                _currentUser.value = _currentUser.value.copy(followingCount = merged.size)
+                merged
             } else {
-                val remoteFollowingIds = firestoreRepository.getFollowingUserIdsOf(targetUserId).toSet()
-                return allUsers.filter { user -> remoteFollowingIds.contains(user.userId) && user.userId != targetUserId }
+                val remoteFollowing = firestoreRepository.getFollowingUserIdsOf(targetId)
+                remoteFollowing.filter { it.isNotBlank() && it != targetId }.distinct()
             }
         } else {
-            // FOLLOWERS TAB
-            if (isSelf) {
-                val remoteFollowerIds = firestoreRepository.getFollowersUserIdsOf(currentUserId).toSet()
-                return allUsers.filter { user -> remoteFollowerIds.contains(user.userId) && user.userId != currentUserId }
-            } else {
-                val remoteFollowerIds = firestoreRepository.getFollowersUserIdsOf(targetUserId).toSet()
-                var targetFollowerIds = remoteFollowerIds
-
-                if (myFollowedUserIds.contains(targetUserId)) {
-                    targetFollowerIds = targetFollowerIds + currentUserId
-                } else {
-                    targetFollowerIds = targetFollowerIds - currentUserId
+            // FOLLOWERS TAB: Who follows targetId?
+            val remoteFollowers = firestoreRepository.getFollowersUserIdsOf(targetId).toMutableList()
+            if (!isSelf) {
+                // If current user is following targetId, ensure current user is in followers list
+                if (myFollowedUserIds.contains(targetId) && !remoteFollowers.contains(currentUserId)) {
+                    remoteFollowers.add(currentUserId)
+                } else if (!myFollowedUserIds.contains(targetId)) {
+                    remoteFollowers.remove(currentUserId)
                 }
-                return allUsers.filter { user -> targetFollowerIds.contains(user.userId) && user.userId != targetUserId }
+            } else {
+                _currentUser.value = _currentUser.value.copy(followersCount = remoteFollowers.size)
+            }
+            remoteFollowers.filter { it.isNotBlank() && it != targetId }.distinct()
+        }
+
+        if (targetUserIds.isEmpty()) {
+            return emptyList()
+        }
+
+        // 2. Fetch all known users pool to resolve each ID accurately
+        val allUsers = getAllUsers()
+        val userMap = allUsers.associateBy { it.userId }.toMutableMap()
+
+        // Also index current user
+        if (_currentUser.value.userId.isNotBlank()) {
+            userMap[_currentUser.value.userId] = _currentUser.value
+        }
+
+        // Also index post authors
+        _posts.value.forEach { post ->
+            if (post.authorId.isNotBlank() && !userMap.containsKey(post.authorId)) {
+                userMap[post.authorId] = UserData(
+                    userId = post.authorId,
+                    username = post.authorUsername,
+                    displayName = post.authorDisplayName.ifBlank { post.authorUsername },
+                    avatarUrl = post.authorAvatarUrl,
+                    bio = "Creator on HundredGram ✨"
+                )
             }
         }
+
+        // Also index reels authors
+        _reels.value.forEach { reel ->
+            if (reel.authorId.isNotBlank() && !userMap.containsKey(reel.authorId)) {
+                userMap[reel.authorId] = UserData(
+                    userId = reel.authorId,
+                    username = reel.authorUsername,
+                    displayName = reel.authorDisplayName.ifBlank { reel.authorUsername },
+                    avatarUrl = reel.authorAvatarUrl,
+                    bio = "Reels Creator 🎬"
+                )
+            }
+        }
+
+        // Also index stories authors
+        _stories.value.forEach { story ->
+            if (story.userId.isNotBlank() && !userMap.containsKey(story.userId)) {
+                userMap[story.userId] = UserData(
+                    userId = story.userId,
+                    username = story.username,
+                    displayName = story.username,
+                    avatarUrl = story.userAvatarUrl,
+                    bio = "Story Creator 📸"
+                )
+            }
+        }
+
+        // 3. For each ID in targetUserIds, resolve to a complete UserData object
+        val resultList = mutableListOf<UserData>()
+        for (id in targetUserIds) {
+            val existing = userMap[id]
+            if (existing != null) {
+                resultList.add(existing)
+            } else {
+                val remoteUser = try {
+                    firestoreRepository.getUserFromFirestore(id)
+                } catch (_: Exception) {
+                    null
+                }
+                if (remoteUser != null) {
+                    userMap[id] = remoteUser
+                    resultList.add(remoteUser)
+                } else {
+                    val cleanName = if (id.startsWith("u_") || id.startsWith("user_")) id.substringAfter("_") else id
+                    val fallbackUser = UserData(
+                        userId = id,
+                        username = cleanName.ifBlank { "creator" },
+                        displayName = cleanName.replaceFirstChar { it.uppercase() }.ifBlank { "Creator" },
+                        avatarUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb",
+                        bio = "HundredGram Member ✨"
+                    )
+                    userMap[id] = fallbackUser
+                    resultList.add(fallbackUser)
+                }
+            }
+        }
+
+        return resultList
     }
 
     suspend fun isUserFollowing(targetUserId: String, currentUserId: String): Boolean {
@@ -699,12 +851,18 @@ class SocialRepository(private val context: Context) {
         folder: String = ""
     ) {
         val author = _currentUser.value
+        val isVideo = mediaUrl.contains(".mp4", ignoreCase = true) ||
+                      mediaUrl.contains("/video/upload/", ignoreCase = true) ||
+                      mediaUrl.endsWith(".mov", ignoreCase = true) ||
+                      resourceType == "video" || format.lowercase() in listOf("mp4", "mov", "mkv", "webm", "3gp")
+
         val newStory = StoryEntity(
             id = "s_${UUID.randomUUID()}",
             userId = author.userId,
             username = author.username,
             userAvatarUrl = author.avatarUrl,
             mediaUrl = mediaUrl,
+            isVideo = isVideo,
             caption = caption,
             audioTitle = audioTitle,
             audioArtist = audioArtist,
@@ -1218,7 +1376,16 @@ class SocialRepository(private val context: Context) {
         _chatMessages.value = _chatMessages.value + (threadId to list)
     }
 
-    fun updateUserProfile(displayName: String, username: String, bio: String, website: String, isPrivate: Boolean, showOnlineStatus: Boolean = true, avatarUrl: String? = null) {
+    fun updateUserProfile(
+        displayName: String,
+        username: String,
+        bio: String,
+        website: String,
+        isPrivate: Boolean,
+        showOnlineStatus: Boolean = true,
+        avatarUrl: String? = null,
+        isVerified: Boolean? = null
+    ) {
         val updated = _currentUser.value.copy(
             username = username,
             displayName = displayName,
@@ -1226,7 +1393,9 @@ class SocialRepository(private val context: Context) {
             website = website,
             isPrivate = isPrivate,
             showOnlineStatus = showOnlineStatus,
-            avatarUrl = avatarUrl ?: _currentUser.value.avatarUrl
+            avatarUrl = avatarUrl ?: _currentUser.value.avatarUrl,
+            isVerified = isVerified ?: _currentUser.value.isVerified,
+            isOnline = true
         )
         _currentUser.value = updated
 
@@ -1294,9 +1463,7 @@ class SocialRepository(private val context: Context) {
         privacy: PrivacyLevel = PrivacyLevel.PUBLIC
     ) {
         val user = _currentUser.value
-        val authorName = user.displayName.ifBlank { user.username }
-        val bodyContent = if (caption.isNotBlank()) "$text - $caption" else text
-        val roarFormattedCaption = if (bodyContent.contains("__ roar 🦁")) bodyContent else "$authorName __ roar 🦁 $bodyContent"
+        val roarFormattedCaption = "ROAR 🦁 $text"
 
         val newPost = PostEntity(
             id = "txt_${System.currentTimeMillis()}",
@@ -1380,9 +1547,47 @@ class SocialRepository(private val context: Context) {
             _stories.value = (newStories + _stories.value).filter { it.userId !in blocked }
         }
 
+        checkAndExpireStories()
         updateFollowedUserIds()
     }
 
+    fun checkAndExpireStories() {
+        val currentTime = System.currentTimeMillis()
+        val twentyFourHours = 24L * 60 * 60 * 1000L
+        val currentStories = _stories.value
+        val activeStories = currentStories.filter { currentTime - it.timestamp <= twentyFourHours }
+        val expiredStories = currentStories.filter { currentTime - it.timestamp > twentyFourHours }
+
+        if (expiredStories.isNotEmpty()) {
+            _stories.value = activeStories
+            expiredStories.forEach { story ->
+                if (story.userId == _currentUser.value.userId) {
+                    val notif = NotificationEntity(
+                        id = "notif_expire_${UUID.randomUUID()}",
+                        recipientId = story.userId,
+                        type = NotificationType.SYSTEM_ALERT,
+                        title = "Story Expired (स्टोरी समाप्त)",
+                        message = "Your story posted 24 hours ago has expired and been removed.",
+                        timestamp = System.currentTimeMillis(),
+                        isRead = false,
+                        relatedId = story.id,
+                        relatedThumbnail = story.mediaUrl
+                    )
+                    _notifications.value = listOf(notif) + _notifications.value
+                    scope.launch {
+                        try {
+                            firestoreRepository.sendNotificationToUser(story.userId, notif)
+                        } catch (_: Exception) {}
+                    }
+                }
+                scope.launch {
+                    try {
+                        firestoreRepository.deleteStoryFromFirestore(story.id, story.userId)
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+    }
     suspend fun syncOnlinePosts() {
         syncOnlineData()
     }

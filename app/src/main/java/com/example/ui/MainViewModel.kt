@@ -597,8 +597,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return repository.locationManager.getCurrentLocationName()
     }
 
-    fun onUpdateProfile(displayName: String, username: String, bio: String, website: String, isPrivate: Boolean, showOnlineStatus: Boolean = true, avatarUrl: String? = null) {
-        repository.updateUserProfile(displayName, username, bio, website, isPrivate, showOnlineStatus, avatarUrl)
+    fun onUpdateProfile(displayName: String, username: String, bio: String, website: String, isPrivate: Boolean, showOnlineStatus: Boolean = true, avatarUrl: String? = null, isVerified: Boolean? = null) {
+        repository.updateUserProfile(displayName, username, bio, website, isPrivate, showOnlineStatus, avatarUrl, isVerified)
     }
 
     fun onCreateTextPost(
@@ -1111,6 +1111,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val following = repository.isFollowingUser(targetUserId)
             _isFollowingMap.value = _isFollowingMap.value + (targetUserId to following)
+        }
+    }
+
+    fun refreshFollowCounts() {
+        viewModelScope.launch {
+            try {
+                repository.updateFollowedUserIds()
+            } catch (_: Exception) {}
         }
     }
 

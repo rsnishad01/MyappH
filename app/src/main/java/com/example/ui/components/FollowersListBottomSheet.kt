@@ -45,14 +45,14 @@ fun FollowersListBottomSheet(
     val currentUser by viewModel.currentUser.collectAsState()
     val followedUserIds by viewModel.followedUserIds.collectAsState()
 
-    var selectedTab by remember { mutableIntStateOf(initialTab) }
+    var selectedTab by remember(initialTab) { mutableIntStateOf(initialTab) }
     var searchQuery by remember { mutableStateOf("") }
     var allUsers by remember { mutableStateOf<List<UserData>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
     val isSelf = targetUserId == currentUser.userId
 
-    LaunchedEffect(targetUserId, selectedTab, followedUserIds) {
+    LaunchedEffect(targetUserId, selectedTab) {
         isLoading = true
         val users = viewModel.getFollowersOrFollowing(targetUserId, isFollowingTab = (selectedTab == 1))
         allUsers = users
@@ -168,7 +168,12 @@ fun FollowersListBottomSheet(
                 ) {
                     Tab(
                         selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
+                        onClick = {
+                            if (selectedTab != 0) {
+                                selectedTab = 0
+                                searchQuery = ""
+                            }
+                        },
                         text = {
                             Text(
                                 text = "Followers",
@@ -180,7 +185,12 @@ fun FollowersListBottomSheet(
                     )
                     Tab(
                         selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
+                        onClick = {
+                            if (selectedTab != 1) {
+                                selectedTab = 1
+                                searchQuery = ""
+                            }
+                        },
                         text = {
                             Text(
                                 text = "Following",
@@ -243,23 +253,13 @@ fun FollowersListBottomSheet(
                     }
                 } else {
                     // Filter user list
-                    val filteredUsers = remember(allUsers, searchQuery, selectedTab, followedUserIds, currentUser) {
-                        allUsers.filter { u ->
-                            // Exclude target user itself from their own followers/following list
-                            if (u.userId == targetUserId) return@filter false
-
-                            // Requirement: "jinka account privet. Hai unko chhod kar sabhi"
-                            // If user is private AND not current user AND current user is not following them -> filter out
-                            if (u.isPrivate && u.userId != currentUser.userId && !followedUserIds.contains(u.userId)) {
-                                return@filter false
-                            }
-
-                            // Search filter
-                            if (searchQuery.isNotBlank()) {
-                                val q = searchQuery.lowercase()
+                    val filteredUsers = remember(allUsers, searchQuery) {
+                        if (searchQuery.isBlank()) {
+                            allUsers
+                        } else {
+                            val q = searchQuery.trim().lowercase()
+                            allUsers.filter { u ->
                                 u.username.lowercase().contains(q) || u.displayName.lowercase().contains(q)
-                            } else {
-                                true
                             }
                         }
                     }
@@ -302,7 +302,10 @@ fun FollowersListBottomSheet(
                                 ) {
                                     UserAvatar(
                                         avatarUrl = user.avatarUrl,
-                                        size = 46.dp
+                                        size = 46.dp,
+                                        isVerified = user.isVerified,
+                                        isOnline = user.isOnline,
+                                        showOnlineStatus = user.showOnlineStatus
                                     )
 
                                     Spacer(modifier = Modifier.width(12.dp))
@@ -324,6 +327,15 @@ fun FollowersListBottomSheet(
                                                     modifier = Modifier.size(15.dp)
                                                 )
                                             }
+                                            if (user.isPrivate) {
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Icon(
+                                                    imageVector = Icons.Default.Lock,
+                                                    contentDescription = "Private",
+                                                    tint = HundredGramTextSecondary,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                            }
                                         }
                                         Text(
                                             text = "@${user.username}",
@@ -335,6 +347,10 @@ fun FollowersListBottomSheet(
                                     if (!isSelfItem) {
                                         Button(
                                             onClick = {
+                                                if (isSelf && selectedTab == 1 && isFollowingUser) {
+                                                    // Unfollowing from self following list
+                                                    allUsers = allUsers.filter { it.userId != user.userId }
+                                                }
                                                 viewModel.toggleFollowUser(user.userId)
                                             },
                                             colors = ButtonDefaults.buttonColors(

@@ -599,27 +599,38 @@ fun CameraScreen(viewModel: MainViewModel) {
                     }
 
                     // Select Audio button
-                    Row(
+                    Column(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
                             .background(Color.Black.copy(alpha = 0.6f))
                             .clickable { showMusicPickerInCamera = true }
                             .padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.MusicNote,
-                            contentDescription = "Select Audio",
-                            tint = HundredGramPink,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = selectedCameraAudioTrack?.title ?: "Add Audio 🎵",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.MusicNote,
+                                contentDescription = "Select Audio",
+                                tint = HundredGramPink,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Select Audio 🎵",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        if (selectedCameraAudioTrack != null) {
+                            Text(
+                                text = selectedCameraAudioTrack!!.title,
+                                color = HundredGramPink,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
                     }
                 }
             }

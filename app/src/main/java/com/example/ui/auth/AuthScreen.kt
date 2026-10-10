@@ -670,7 +670,7 @@ fun AuthScreen(viewModel: MainViewModel) {
                                                 followersCount = 0,
                                                 followingCount = 0,
                                                 postsCount = 0,
-                                                isVerified = true
+                                                isVerified = false
                                             )
                                             viewModel.loginUser(newUser, context)
                                             Toast.makeText(context, "Successfully Registered and Logged in as R. S. Nishad via Facebook!", Toast.LENGTH_LONG).show()

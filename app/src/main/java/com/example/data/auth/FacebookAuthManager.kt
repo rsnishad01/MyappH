@@ -47,7 +47,7 @@ class FacebookAuthManager(private val context: Context) {
                             followersCount = 0,
                             followingCount = 0,
                             postsCount = 0,
-                            isVerified = true
+                            isVerified = false
                         )
                         return@withContext Result.success(user)
                     }
@@ -67,7 +67,7 @@ class FacebookAuthManager(private val context: Context) {
                     followersCount = 0,
                     followingCount = 0,
                     postsCount = 0,
-                    isVerified = true
+                    isVerified = false
                 )
                 Result.success(user)
             } else {
@@ -83,7 +83,7 @@ class FacebookAuthManager(private val context: Context) {
                     followersCount = 0,
                     followingCount = 0,
                     postsCount = 0,
-                    isVerified = true
+                    isVerified = false
                 )
                 Result.success(user)
             }
@@ -98,7 +98,7 @@ class FacebookAuthManager(private val context: Context) {
                 followersCount = 0,
                 followingCount = 0,
                 postsCount = 0,
-                isVerified = true
+                isVerified = false
             )
             Result.success(user)
         }
