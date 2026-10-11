@@ -46,6 +46,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
@@ -250,6 +251,16 @@ fun CreateReelScreen(viewModel: MainViewModel) {
         }
     }
 
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            customThumbnailUri = uri
+            viewModel.selectedReelThumbnailUri.value = uri
+            selectedThumbBitmap = null
+        }
+    }
+
     val scrollState = rememberScrollState()
 
     Column(
@@ -308,6 +319,7 @@ fun CreateReelScreen(viewModel: MainViewModel) {
                             caption = caption,
                             audioTitle = audioTitle,
                             audioArtist = audioArtist,
+                            thumbnailUri = viewModel.selectedReelThumbnailUri.value?.toString() ?: "",
                             onSaved = {
                                 Toast.makeText(context, "Reel Draft Saved to Room!", Toast.LENGTH_SHORT).show()
                             }
@@ -335,7 +347,14 @@ fun CreateReelScreen(viewModel: MainViewModel) {
                     val uri = selectedVideoUri ?: return@Button
                     val audioTitle = customAudioTitle.ifBlank { selectedAudioTrack?.title ?: "" }
                     val audioArtist = customAudioArtist.ifBlank { selectedAudioTrack?.artist ?: "" }
-                    viewModel.createReel(uri, caption, audioTitle, audioArtist, privacy, taggedFriends)
+                    viewModel.createReel(
+                        uri, 
+                        caption, 
+                        audioTitle, 
+                        audioArtist, 
+                        privacy, 
+                        taggedFriends
+                    )
                 },
                 enabled = selectedVideoUri != null,
                 colors = ButtonDefaults.buttonColors(containerColor = HundredGramPink),
@@ -618,6 +637,22 @@ fun CreateReelScreen(viewModel: MainViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 56.dp, height = 84.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(
+                                        width = 1.dp,
+                                        color = HundredGramPink,
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .clickable { imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.AddPhotoAlternate, contentDescription = "Pick Custom Thumbnail", tint = HundredGramPink)
+                            }
+                        }
                         items(extractedThumbnails) { bmp ->
                             val isSelected = (selectedThumbBitmap == bmp)
                             Box(
@@ -949,6 +984,7 @@ fun CreateReelScreen(viewModel: MainViewModel) {
                                 caption = caption,
                                 audioTitle = audioTitle,
                                 audioArtist = audioArtist,
+                                thumbnailUri = viewModel.selectedReelThumbnailUri.value?.toString() ?: "",
                                 onSaved = {
                                     Toast.makeText(context, "Reel Draft Saved!", Toast.LENGTH_SHORT).show()
                                     showSaveDraftDialog = false

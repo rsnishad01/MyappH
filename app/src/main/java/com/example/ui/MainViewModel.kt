@@ -880,14 +880,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                         is UploadStatus.Success -> {
                             _uploadProgress.value = 1f
-                            _uploadMessage.value = "Reel published!"
-                            val thumbUri = selectedReelThumbnailUri.value?.toString() ?: ""
+                            _uploadMessage.value = "Saving cover & publishing reel..."
+                            val rawThumb = selectedReelThumbnailUri.value
+                            var finalThumbUrl = rawThumb?.toString().orEmpty()
+
+                            if (rawThumb != null) {
+                                val rawStr = rawThumb.toString()
+                                if (!rawStr.startsWith("http://") && !rawStr.startsWith("https://")) {
+                                    try {
+                                        repository.storageManager.uploadMediaFlow(
+                                            uri = rawThumb,
+                                            folder = "reels_thumbs"
+                                        ).collect { thumbStatus ->
+                                            if (thumbStatus is UploadStatus.Success) {
+                                                finalThumbUrl = thumbStatus.downloadUrl
+                                            }
+                                        }
+                                    } catch (te: Exception) {
+                                        android.util.Log.w("MainViewModel", "Reel thumbnail upload fallback: ${te.message}")
+                                    }
+                                }
+                            }
+
+                            if (finalThumbUrl.isBlank()) {
+                                finalThumbUrl = status.downloadUrl
+                            }
+
                             repository.publishReelAfterUpload(
                                 mediaUrl = status.downloadUrl,
                                 caption = caption,
                                 audioTitle = audioTitle,
                                 audioArtist = audioArtist,
-                                thumbnailUri = thumbUri,
+                                thumbnailUri = finalThumbUrl,
                                 publicId = status.publicId,
                                 resourceType = status.resourceType,
                                 format = status.format,
@@ -898,6 +922,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 privacy = privacy,
                                 tags = tags
                             )
+                            selectedReelThumbnailUri.value = null
                             _isUploading.value = false
                             val draftId = currentEditingDraftId.value
                             if (!draftId.isNullOrBlank()) {
@@ -941,6 +966,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         caption: String,
         audioTitle: String = "",
         audioArtist: String = "",
+        thumbnailUri: String = "",
         onSaved: () -> Unit = {}
     ) {
         viewModelScope.launch {
@@ -950,7 +976,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 mediaUri = mediaUri.toString(),
                 caption = caption,
                 audioTitle = audioTitle,
-                audioArtist = audioArtist
+                audioArtist = audioArtist,
+                thumbnailUri = thumbnailUri
             )
             currentEditingDraftId.value = savedId
             onSaved()
@@ -985,6 +1012,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             selectedReelUri.value = Uri.parse(draft.mediaUri)
             selectedReelAudio.value = draft.audioTitle
             draftInitialCaption.value = draft.caption
+            if (draft.thumbnailUri.isNotBlank()) {
+                selectedReelThumbnailUri.value = Uri.parse(draft.thumbnailUri)
+            }
             navigateTo(ScreenDestination.CreateReel)
         }
     }

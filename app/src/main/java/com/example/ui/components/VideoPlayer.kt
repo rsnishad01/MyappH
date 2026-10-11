@@ -69,6 +69,7 @@ fun VideoPlayer(
                 setAudioAttributes(audioAttributes, true)
                 repeatMode = Player.REPEAT_MODE_ONE
                 playWhenReady = isPlaying
+                volume = if (isMuted) 0f else 1f
             }
     }
 
@@ -89,15 +90,20 @@ fun VideoPlayer(
         exoPlayer.addListener(listener)
         onDispose {
             exoPlayer.removeListener(listener)
+            exoPlayer.pause()
+            exoPlayer.stop()
+            exoPlayer.clearMediaItems()
             exoPlayer.release()
         }
     }
 
-    // Handle isPlaying state changes
+    // Handle isPlaying state changes - immediately silence and pause when false
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
+            exoPlayer.playWhenReady = true
             exoPlayer.play()
         } else {
+            exoPlayer.playWhenReady = false
             exoPlayer.pause()
         }
     }
@@ -127,9 +133,12 @@ fun VideoPlayer(
                     val mediaItem = MediaItem.fromUri(resolvedUri)
                     exoPlayer.setMediaItem(mediaItem)
                     exoPlayer.prepare()
+                    exoPlayer.volume = if (isMuted) 0f else 1f
                     if (isPlaying) {
+                        exoPlayer.playWhenReady = true
                         exoPlayer.play()
                     } else {
+                        exoPlayer.playWhenReady = false
                         exoPlayer.pause()
                     }
                 } else {

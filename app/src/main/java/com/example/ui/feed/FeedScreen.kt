@@ -365,8 +365,8 @@ fun FeedScreen(viewModel: MainViewModel) {
                         )
                     }
 
-                    // Sponsored Native Ad item inserted after every 4 posts/reels
-                    if ((index + 1) % 4 == 0) {
+                    // Sponsored Native Ad item inserted after every 2 posts
+                    if ((index + 1) % 2 == 0) {
                         val adKey = "ad_$index"
                         val nativeAd = nativeAds[adKey]
 
@@ -385,7 +385,7 @@ fun FeedScreen(viewModel: MainViewModel) {
                         if (nativeAd != null) {
                             NativeAdCard(nativeAd = nativeAd)
                         } else {
-                            val sampleAdIndex = ((index / 4) % SampleFeedAds.size)
+                            val sampleAdIndex = ((index / 2) % SampleFeedAds.size)
                             val sampleAd = SampleFeedAds[sampleAdIndex]
                             if (!hiddenAdIds.contains(sampleAd.id)) {
                                 SponsoredFeedAdCard(

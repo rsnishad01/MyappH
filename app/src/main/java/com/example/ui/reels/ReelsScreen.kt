@@ -104,8 +104,8 @@ fun ReelsScreen(viewModel: MainViewModel) {
     var isRefreshing by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
-    val totalPages = if (reels.size >= 3) {
-        reels.size + (reels.size / 3)
+    val totalPages = if (reels.size >= 2) {
+        reels.size + (reels.size / 2)
     } else {
         reels.size
     }
@@ -118,7 +118,7 @@ fun ReelsScreen(viewModel: MainViewModel) {
         if (!targetId.isNullOrBlank() && reels.isNotEmpty()) {
             val targetIndex = reels.indexOfFirst { it.id == targetId }
             if (targetIndex >= 0) {
-                val targetPage = targetIndex + (targetIndex / 3)
+                val targetPage = targetIndex + (targetIndex / 2)
                 if (targetPage < totalPages) {
                     pagerState.scrollToPage(targetPage)
                 }
@@ -130,7 +130,9 @@ fun ReelsScreen(viewModel: MainViewModel) {
     // Auto-play original audio of the active reel on page change
     LaunchedEffect(pagerState.currentPage) {
         val page = pagerState.currentPage
-        val isAdPage = page > 0 && page % 3 == 0
+        val isAdPage = (page + 1) % 3 == 0
+        // Stop any background/previous reel custom audio soundtrack before switching
+        viewModel.stopAudio()
         if (!isAdPage && reels.isNotEmpty()) {
             val reelIndex = page - (page / 3)
             if (reelIndex in reels.indices) {
@@ -138,8 +140,6 @@ fun ReelsScreen(viewModel: MainViewModel) {
                 viewModel.playReelAudio(activeReel)
                 viewModel.recordReelView(activeReel.id)
             }
-        } else {
-            viewModel.stopAudio()
         }
     }
 
@@ -226,11 +226,18 @@ fun ReelsScreen(viewModel: MainViewModel) {
             ) {
                 VerticalPager(
                     state = pagerState,
+                    key = { page ->
+                        val isAd = (page + 1) % 3 == 0
+                        if (isAd) "ad_$page" else {
+                            val rIndex = page - (page / 3)
+                            reels.getOrNull(rIndex)?.id ?: "reel_$page"
+                        }
+                    },
                     modifier = Modifier.fillMaxSize()
                 ) { page ->
-                val isAdPage = page > 0 && page % 3 == 0
+                val isAdPage = (page + 1) % 3 == 0
                 
-                // After every 3 reels -> 1 Video Ad (AdMob)
+                // After every 2 reels -> 1 Video Ad (AdMob)
                 if (isAdPage) {
                     val activity = context as? android.app.Activity
                     SponsoredAdReelItem(

@@ -10,7 +10,6 @@ import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
-import com.google.android.gms.ads.RequestConfiguration
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 import com.google.android.gms.ads.nativead.NativeAd
@@ -18,25 +17,24 @@ import com.google.android.gms.ads.nativead.NativeAdOptions
 
 /**
  * Unified AdMob Manager for HundredGram
- * Handles Native Feed Ads, Video/Interstitial Reel Ads, and safe fallbacks.
+ * Exclusively uses verified Real Ad IDs:
+ * - App ID: ca-app-pub-6058721301027431~6693520916
+ * - Post Ad: ca-app-pub-6058721301027431/8718806610 (Shown after every 2 posts)
+ * - Reel Ad: ca-app-pub-6058721301027431/1195539816 (Shown after every 2 reels)
  */
 object AdsManager {
     private const val TAG = "AdsManager"
 
-    // Ad IDs configured per user AdMob specification
+    // Real AdMob IDs
     const val APP_ID = "ca-app-pub-6058721301027431~6693520916"
     const val FEED_NATIVE_AD_ID = "ca-app-pub-6058721301027431/8718806610"
     const val REEL_AD_ID = "ca-app-pub-6058721301027431/1195539816"
-
-    // Official Google AdMob sample test ad units for sandbox/emulator validation
-    private const val TEST_NATIVE_AD_ID = "ca-app-pub-3940256099942544/2247696110"
-    private const val TEST_REEL_AD_ID = "ca-app-pub-3940256099942544/8691691433"
 
     private var isInitialized = false
     private var cachedReelInterstitial: InterstitialAd? = null
 
     /**
-     * Initializes AdMob SDK safely
+     * Initializes AdMob MobileAds SDK safely
      */
     fun initialize(context: Context) {
         if (isInitialized) return
@@ -44,18 +42,12 @@ object AdsManager {
             // Disable heavy mediation adapter scanning to prevent service binding errors
             MobileAds.disableMediationAdapterInitialization(context)
 
-            // Configure test device for emulator environments
-            val requestConfiguration = RequestConfiguration.Builder()
-                .setTestDeviceIds(listOf(AdRequest.DEVICE_ID_EMULATOR))
-                .build()
-            MobileAds.setRequestConfiguration(requestConfiguration)
-
             Thread {
                 try {
                     MobileAds.initialize(context) { status ->
                         Log.d(TAG, "AdMob MobileAds initialized successfully: $status")
                         isInitialized = true
-                        // Preload an interstitial video ad for reels
+                        // Preload interstitial video ad for reels using real Reel Ad ID
                         preloadReelVideoAd(context.applicationContext)
                     }
                 } catch (e: Exception) {
@@ -68,8 +60,8 @@ object AdsManager {
     }
 
     /**
-     * Loads a Native Ad for Post Feed (Every 4 posts)
-     * First attempts with user's live AdMob ID, and falls back to Google test ad unit if live unit has no fill yet.
+     * Loads a Native Ad for Post Feed (shown after every 2 posts)
+     * Exclusively uses real FEED_NATIVE_AD_ID.
      */
     fun loadNativeFeedAd(
         context: Context,
@@ -86,12 +78,7 @@ object AdsManager {
                 .withAdListener(object : AdListener() {
                     override fun onAdFailedToLoad(error: LoadAdError) {
                         Log.w(TAG, "Native feed ad unit $adUnitId failed to load: ${error.message}")
-                        if (adUnitId != TEST_NATIVE_AD_ID) {
-                            Log.d(TAG, "Attempting fallback to test native ad unit...")
-                            loadNativeFeedAd(context, TEST_NATIVE_AD_ID, onAdLoaded, onAdFailed)
-                        } else {
-                            onAdFailed(error)
-                        }
+                        onAdFailed(error)
                     }
                 })
                 .withNativeAdOptions(
@@ -108,7 +95,8 @@ object AdsManager {
     }
 
     /**
-     * Preloads Interstitial Video Ad for Reels
+     * Preloads Interstitial Video Ad for Reels (shown after every 2 reels)
+     * Exclusively uses real REEL_AD_ID.
      */
     fun preloadReelVideoAd(context: Context, adUnitId: String = REEL_AD_ID) {
         try {
@@ -124,13 +112,8 @@ object AdsManager {
                     }
 
                     override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                        Log.w(TAG, "Reel Video Ad failed to preload ($adUnitId): ${loadAdError.message}")
-                        if (adUnitId != TEST_REEL_AD_ID) {
-                            Log.d(TAG, "Attempting fallback preload with test reel ad unit...")
-                            preloadReelVideoAd(context, TEST_REEL_AD_ID)
-                        } else {
-                            cachedReelInterstitial = null
-                        }
+                        Log.w(TAG, "Reel Video Ad failed to load ($adUnitId): ${loadAdError.message}")
+                        cachedReelInterstitial = null
                     }
                 }
             )
@@ -140,7 +123,7 @@ object AdsManager {
     }
 
     /**
-     * Shows Video Ad after every 3 Reels
+     * Shows Real Video Ad after every 2 Reels
      */
     fun showReelVideoAd(
         activity: Activity,
@@ -165,7 +148,7 @@ object AdsManager {
             }
             ad.show(activity)
         } else {
-            // Not ready yet or failed to load: continue reel playback smoothly without interruption
+            // Not ready yet: smoothly continue without interruption and retry preloading
             preloadReelVideoAd(activity.applicationContext)
             onDismissed()
         }
