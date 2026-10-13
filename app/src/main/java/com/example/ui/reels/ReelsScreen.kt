@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VolumeMute
@@ -377,6 +378,7 @@ fun ReelItem(
     onTogglePlayAudio: () -> Unit = {},
     viewModel: com.example.ui.MainViewModel
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var isPlaying by remember { mutableStateOf(true) }
     var showPauseIndicator by remember { mutableStateOf(false) }
 
@@ -555,6 +557,24 @@ fun ReelItem(
                 Icon(
                     imageVector = Icons.Default.Share,
                     contentDescription = "Share",
+                    tint = Color.White,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+
+            IconButton(
+                onClick = {
+                    val urlToDownload = reel.videoUrl.ifBlank { reel.thumbnailUri }
+                    com.example.util.MediaDownloadHelper.downloadReel(
+                        context = context,
+                        videoUrl = urlToDownload,
+                        title = reel.caption.ifBlank { "Reel_${reel.id}" }
+                    )
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = "Download Reel",
                     tint = Color.White,
                     modifier = Modifier.size(26.dp)
                 )

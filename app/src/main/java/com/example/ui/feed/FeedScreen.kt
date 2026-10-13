@@ -63,6 +63,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.PlayArrow
@@ -905,6 +906,7 @@ fun PostCard(
     viewModel: MainViewModel,
     currentUser: UserData
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var showHeartAnim by remember { mutableStateOf(false) }
 
@@ -1159,6 +1161,36 @@ fun PostCard(
                     contentDescription = "Share",
                     tint = HundredGramTextPrimary,
                     modifier = Modifier.size(21.dp)
+                )
+            }
+
+            // Download Action (Image or Video)
+            IconButton(
+                onClick = {
+                    val mediaToDownload = post.imageUrl.ifBlank { post.mediaUrl }
+                    val isVideo = post.type.equals("video", ignoreCase = true) || mediaToDownload.contains(".mp4", ignoreCase = true)
+                    val postTitle = post.caption.ifBlank { post.text }.take(20).ifBlank { "Post_${post.id}" }
+                    if (isVideo) {
+                        com.example.util.MediaDownloadHelper.downloadReel(
+                            context = context,
+                            videoUrl = mediaToDownload,
+                            title = postTitle
+                        )
+                    } else {
+                        com.example.util.MediaDownloadHelper.downloadImage(
+                            context = context,
+                            imageUrl = mediaToDownload,
+                            title = postTitle
+                        )
+                    }
+                },
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = "Download Media",
+                    tint = HundredGramTextPrimary,
+                    modifier = Modifier.size(22.dp)
                 )
             }
 

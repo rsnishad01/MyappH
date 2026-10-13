@@ -76,6 +76,10 @@ fun VideoPlayer(
                 repeatMode = Player.REPEAT_MODE_ONE
                 playWhenReady = isPlaying
                 volume = if (isPlaying && !isMuted) 1f else 0f
+                trackSelectionParameters = trackSelectionParameters
+                    .buildUpon()
+                    .setMaxVideoSize(1280, 1280)
+                    .build()
             }
     }
 
@@ -127,16 +131,17 @@ fun VideoPlayer(
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
 
-        if (videoUrl.isNotBlank()) {
+        val effectiveUrl = com.example.util.VideoUtils.get720pVideoUrl(videoUrl)
+        if (effectiveUrl.isNotBlank()) {
             try {
-                val resolvedUri: Uri? = if (videoUrl.startsWith("android.resource://") ||
-                    videoUrl.startsWith("content://") ||
-                    videoUrl.startsWith("http://") ||
-                    videoUrl.startsWith("https://")
+                val resolvedUri: Uri? = if (effectiveUrl.startsWith("android.resource://") ||
+                    effectiveUrl.startsWith("content://") ||
+                    effectiveUrl.startsWith("http://") ||
+                    effectiveUrl.startsWith("https://")
                 ) {
-                    Uri.parse(videoUrl)
+                    Uri.parse(effectiveUrl)
                 } else {
-                    val filePath = if (videoUrl.startsWith("file://")) videoUrl.removePrefix("file://") else videoUrl
+                    val filePath = if (effectiveUrl.startsWith("file://")) effectiveUrl.removePrefix("file://") else effectiveUrl
                     val file = java.io.File(filePath)
                     if (file.exists() && file.length() > 0) {
                         Uri.fromFile(file)

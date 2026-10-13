@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -92,6 +93,30 @@ fun PostOptionsSheet(
                 title = "Share via Apps (अन्य ऐप्स पर शेयर करें)",
                 onClick = {
                     onShare()
+                    onDismiss()
+                }
+            )
+
+            OptionItem(
+                icon = Icons.Default.Download,
+                title = "Download Media (इमेज/वीडियो डाउनलोड करें)",
+                onClick = {
+                    val mediaToDownload = post.imageUrl.ifBlank { post.mediaUrl }
+                    val isVideo = post.type.equals("video", ignoreCase = true) || mediaToDownload.contains(".mp4", ignoreCase = true)
+                    val postTitle = post.caption.ifBlank { post.text }.take(20).ifBlank { "Post_${post.id}" }
+                    if (isVideo) {
+                        com.example.util.MediaDownloadHelper.downloadReel(
+                            context = context,
+                            videoUrl = mediaToDownload,
+                            title = postTitle
+                        )
+                    } else {
+                        com.example.util.MediaDownloadHelper.downloadImage(
+                            context = context,
+                            imageUrl = mediaToDownload,
+                            title = postTitle
+                        )
+                    }
                     onDismiss()
                 }
             )

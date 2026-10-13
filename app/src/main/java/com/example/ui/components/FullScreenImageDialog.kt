@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -54,6 +55,20 @@ fun FullScreenImageDialog(
                 modifier = Modifier.align(Alignment.TopStart).statusBarsPadding()
             ) {
                 Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+            }
+
+            val context = androidx.compose.ui.platform.LocalContext.current
+            IconButton(
+                onClick = {
+                    com.example.util.MediaDownloadHelper.downloadImage(
+                        context = context,
+                        imageUrl = imageUrl,
+                        title = "HundredGram_Photo"
+                    )
+                },
+                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding()
+            ) {
+                Icon(Icons.Default.Download, contentDescription = "Download Image", tint = Color.White)
             }
 
             if (isEditable) {

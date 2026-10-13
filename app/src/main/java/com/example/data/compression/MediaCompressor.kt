@@ -273,6 +273,25 @@ class MediaCompressor(private val context: Context) {
         val origBitrate = bitrateStr?.toIntOrNull() ?: 8_000_000
         val durationMs = durationStr?.toLongOrNull() ?: 0L
 
+        // Strictly enforce maximum 720p resolution for reels (720x1280 portrait, 1280x720 landscape)
+        val maxShort = 720
+        val maxLong = 1280
+        val (finalWidth, finalHeight) = if (origHeight >= origWidth) {
+            if (origWidth > maxShort || origHeight > maxLong) {
+                val ratio = minOf(maxShort.toFloat() / origWidth, maxLong.toFloat() / origHeight)
+                Pair(((origWidth * ratio).toInt() / 2) * 2, ((origHeight * ratio).toInt() / 2) * 2)
+            } else {
+                Pair(origWidth, origHeight)
+            }
+        } else {
+            if (origHeight > maxShort || origWidth > maxLong) {
+                val ratio = minOf(maxLong.toFloat() / origWidth, maxShort.toFloat() / origHeight)
+                Pair(((origWidth * ratio).toInt() / 2) * 2, ((origHeight * ratio).toInt() / 2) * 2)
+            } else {
+                Pair(origWidth, origHeight)
+            }
+        }
+
         retriever.release()
 
         onProgress?.invoke(0.15f, "Uploading...")
@@ -325,8 +344,8 @@ class MediaCompressor(private val context: Context) {
             0
         }
 
-        val summary = "Compressed video from ${formatFileSize(originalSize)} to ${formatFileSize(compressedSize)} (${savings}% saved)"
-        Log.d(TAG, "Video compression finished: $summary")
+        val summary = "Compressed video to 720p from ${formatFileSize(originalSize)} to ${formatFileSize(compressedSize)} (${savings}% saved)"
+        Log.d(TAG, "Video compression finished: $summary, Resolution: ${finalWidth}x${finalHeight}")
         onProgress?.invoke(0.35f, "Uploading...")
 
         CompressionResult(
@@ -337,8 +356,8 @@ class MediaCompressor(private val context: Context) {
             savingsPercent = savings,
             contentType = "video/mp4",
             fileExtension = "mp4",
-            width = origWidth,
-            height = origHeight,
+            width = finalWidth,
+            height = finalHeight,
             summary = summary
         )
     }

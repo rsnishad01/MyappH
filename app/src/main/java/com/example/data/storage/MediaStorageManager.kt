@@ -206,12 +206,17 @@ class MediaStorageManager(private val context: Context) {
             }
         )
 
-        val requestBody = MultipartBody.Builder()
+        val requestBodyBuilder = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("file", finalUploadFile.name, fileRequestBody)
             .addFormDataPart("upload_preset", UPLOAD_PRESET)
             .addFormDataPart("folder", folderPath)
-            .build()
+
+        if (isVideo) {
+            requestBodyBuilder.addFormDataPart("transformation", "w_720,h_1280,c_limit,q_auto,vc_h264")
+        }
+
+        val requestBody = requestBodyBuilder.build()
 
         // Choose appropriate Cloudinary endpoint
         val endpointType = if (isVideo) "video" else "image"
@@ -244,7 +249,8 @@ class MediaStorageManager(private val context: Context) {
                         Log.d(TAG, "Cloudinary upload response received successfully")
 
                         val json = JSONObject(responseData)
-                        val secureUrl = json.getString("secure_url")
+                        val rawSecureUrl = json.getString("secure_url")
+                        val secureUrl = if (isVideo) com.example.util.VideoUtils.get720pVideoUrl(rawSecureUrl) else rawSecureUrl
                         val publicId = json.optString("public_id", "")
                         val resourceType = json.optString("resource_type", if (isVideo) "video" else "image")
                         val format = json.optString("format", extension)
