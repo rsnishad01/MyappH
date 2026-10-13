@@ -231,7 +231,8 @@ class ReelAudioService(private val context: Context) {
             Log.w(TAG, "Error in stop(): ${e.message}")
         }
         mediaPlayer = null
-        _playbackInfo.value = ReelPlaybackInfo()
+        val currentMuted = _playbackInfo.value.isMuted
+        _playbackInfo.value = ReelPlaybackInfo(isMuted = currentMuted)
     }
 }
 

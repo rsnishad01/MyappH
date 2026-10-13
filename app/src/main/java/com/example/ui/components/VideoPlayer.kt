@@ -35,6 +35,7 @@ import coil.compose.AsyncImage
 @Composable
 fun VideoPlayer(
     videoUrl: String,
+    reelId: String = "",
     isMuted: Boolean = false,
     isPlaying: Boolean = true,
     modifier: Modifier = Modifier,
@@ -45,7 +46,12 @@ fun VideoPlayer(
     var hasError by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(true) }
 
-    val exoPlayer = remember(context) {
+    // Unique player fingerprint per reel & video URL so different reels never share or bleed audio
+    val playerFingerprint = remember(reelId, videoUrl) {
+        if (reelId.isNotBlank()) "reel_${reelId}_${videoUrl.hashCode()}" else "media_${videoUrl.hashCode()}"
+    }
+
+    val exoPlayer = remember(context, playerFingerprint) {
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
@@ -69,7 +75,7 @@ fun VideoPlayer(
                 setAudioAttributes(audioAttributes, true)
                 repeatMode = Player.REPEAT_MODE_ONE
                 playWhenReady = isPlaying
-                volume = if (isMuted) 0f else 1f
+                volume = if (isPlaying && !isMuted) 1f else 0f
             }
     }
 
@@ -90,6 +96,8 @@ fun VideoPlayer(
         exoPlayer.addListener(listener)
         onDispose {
             exoPlayer.removeListener(listener)
+            exoPlayer.volume = 0f
+            exoPlayer.playWhenReady = false
             exoPlayer.pause()
             exoPlayer.stop()
             exoPlayer.clearMediaItems()
@@ -97,12 +105,15 @@ fun VideoPlayer(
         }
     }
 
-    // Handle isPlaying state changes - immediately silence and pause when false
-    LaunchedEffect(isPlaying) {
+    // Handle isPlaying state changes - immediately silence volume to 0f and pause when not active
+    LaunchedEffect(isPlaying, isMuted) {
         if (isPlaying) {
+            exoPlayer.volume = if (isMuted) 0f else 1f
             exoPlayer.playWhenReady = true
             exoPlayer.play()
         } else {
+            // Cut audio instantly to 0 volume and pause so next reel never plays previous audio
+            exoPlayer.volume = 0f
             exoPlayer.playWhenReady = false
             exoPlayer.pause()
         }
@@ -110,6 +121,12 @@ fun VideoPlayer(
 
     // Play/update media item
     LaunchedEffect(videoUrl) {
+        // Clear any previous audio/video immediately upon loading a new URL
+        exoPlayer.volume = 0f
+        exoPlayer.playWhenReady = false
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
+
         if (videoUrl.isNotBlank()) {
             try {
                 val resolvedUri: Uri? = if (videoUrl.startsWith("android.resource://") ||
@@ -133,11 +150,12 @@ fun VideoPlayer(
                     val mediaItem = MediaItem.fromUri(resolvedUri)
                     exoPlayer.setMediaItem(mediaItem)
                     exoPlayer.prepare()
-                    exoPlayer.volume = if (isMuted) 0f else 1f
                     if (isPlaying) {
+                        exoPlayer.volume = if (isMuted) 0f else 1f
                         exoPlayer.playWhenReady = true
                         exoPlayer.play()
                     } else {
+                        exoPlayer.volume = 0f
                         exoPlayer.playWhenReady = false
                         exoPlayer.pause()
                     }
@@ -157,7 +175,11 @@ fun VideoPlayer(
 
     // Handle Mute state
     LaunchedEffect(isMuted) {
-        exoPlayer.volume = if (isMuted) 0f else 1f
+        if (isPlaying) {
+            exoPlayer.volume = if (isMuted) 0f else 1f
+        } else {
+            exoPlayer.volume = 0f
+        }
     }
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
@@ -168,6 +190,11 @@ fun VideoPlayer(
                         player = exoPlayer
                         setUseController(useController)
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    }
+                },
+                update = { view ->
+                    if (view.player != exoPlayer) {
+                        view.player = exoPlayer
                     }
                 },
                 modifier = Modifier.fillMaxSize()

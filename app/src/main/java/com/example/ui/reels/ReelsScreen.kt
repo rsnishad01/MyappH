@@ -127,17 +127,16 @@ fun ReelsScreen(viewModel: MainViewModel) {
         }
     }
 
-    // Auto-play original audio of the active reel on page change
+    // Handle active reel on page change - ensure clean audio switch
     LaunchedEffect(pagerState.currentPage) {
         val page = pagerState.currentPage
         val isAdPage = (page + 1) % 3 == 0
-        // Stop any background/previous reel custom audio soundtrack before switching
+        // Stop any external background soundtrack preview immediately
         viewModel.stopAudio()
         if (!isAdPage && reels.isNotEmpty()) {
             val reelIndex = page - (page / 3)
             if (reelIndex in reels.indices) {
                 val activeReel = reels[reelIndex]
-                viewModel.playReelAudio(activeReel)
                 viewModel.recordReelView(activeReel.id)
             }
         }
@@ -389,8 +388,7 @@ fun ReelItem(
         }
     }
 
-    val hasCustomAudio = reel.audioTitle.isNotBlank()
-    val effectiveMuted = isMuted || hasCustomAudio
+    val effectiveMuted = isMuted
     val effectivePlaying = isPlaying && isCurrentPage
 
     Box(
@@ -399,7 +397,6 @@ fun ReelItem(
             .clickable {
                 isPlaying = !isPlaying
                 showPauseIndicator = true
-                onTogglePlayAudio()
             }
     ) {
         // Reel Video / Thumbnail Background
@@ -411,6 +408,7 @@ fun ReelItem(
         if (mediaToPlay.isNotBlank()) {
             com.example.ui.components.VideoPlayer(
                 videoUrl = mediaToPlay,
+                reelId = reel.id,
                 isMuted = effectiveMuted,
                 isPlaying = effectivePlaying,
                 fallbackImageUrl = fallbackThumb,
@@ -445,7 +443,6 @@ fun ReelItem(
             IconButton(
                 onClick = {
                     isPlaying = !isPlaying
-                    onTogglePlayAudio()
                 },
                 modifier = Modifier
                     .align(Alignment.Center)

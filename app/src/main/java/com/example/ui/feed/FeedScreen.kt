@@ -1051,6 +1051,7 @@ fun PostCard(
                 Box(modifier = Modifier.fillMaxSize()) {
                     com.example.ui.components.VideoPlayer(
                         videoUrl = videoUrl,
+                        reelId = post.id,
                         isMuted = isVideoMuted,
                         isPlaying = true,
                         fallbackImageUrl = videoUrl,
@@ -2269,6 +2270,7 @@ fun FullScreenPostDialog(
                 // 9:16 full immersive mobile size
                 com.example.ui.components.VideoPlayer(
                     videoUrl = videoUrl,
+                    reelId = post.id,
                     isMuted = false,
                     useController = true,
                     fallbackImageUrl = post.imageUrl,

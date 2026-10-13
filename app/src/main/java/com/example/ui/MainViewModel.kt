@@ -1029,27 +1029,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playReelAudio(reel: ReelVideo) {
-        if (reel.audioTitle.isBlank() && reel.audioArtist.isBlank()) {
-            // No custom audio soundtrack attached; video's own audio will play through VideoPlayer
-            repository.reelAudioService.stop()
-            return
-        }
-        val availableTracks = repository.getAvailableAudioTracks()
-        if (availableTracks.isEmpty()) {
-            repository.reelAudioService.stop()
-            return
-        }
-        // Try matching by track title
-        val matchedTrack = availableTracks.find {
-            it.title.equals(reel.audioTitle, ignoreCase = true) ||
-            reel.audioTitle.contains(it.title, ignoreCase = true) ||
-            it.title.contains(reel.audioTitle, ignoreCase = true)
-        }
-        if (matchedTrack != null) {
-            repository.reelAudioService.playAudioTrack(matchedTrack)
-        } else {
-            repository.reelAudioService.stop()
-        }
+        // Reel audio is played natively and synchronously by each reel's own isolated VideoPlayer instance.
+        // Stop any external preview MediaPlayer so it never overrides or conflicts with reels.
+        repository.reelAudioService.stop()
     }
 
     fun stopAudio() {

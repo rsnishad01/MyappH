@@ -1646,7 +1646,9 @@ class SocialRepository(private val context: Context) {
                 val mediaUrl = reel.videoUrl.ifBlank { reel.thumbnailUri }
                 ComprehensiveAudioTrack(
                     id = "reel_audio_${reel.id}",
-                    title = reel.audioTitle,
+                    title = if (reel.audioTitle.equals("Original Audio", ignoreCase = true)) {
+                        "${reel.authorDisplayName.ifBlank { reel.authorUsername }} • Original Audio"
+                    } else reel.audioTitle,
                     artist = reel.audioArtist.ifBlank { reel.authorDisplayName.ifBlank { reel.authorUsername } },
                     durationSeconds = 30,
                     coverUrl = reel.thumbnailUri,
@@ -1655,7 +1657,7 @@ class SocialRepository(private val context: Context) {
                     streamUrl = mediaUrl
                 )
             } else null
-        }.distinctBy { it.title.trim().lowercase() }
+        }.distinctBy { it.id }
 
         return tracksFromReels
     }

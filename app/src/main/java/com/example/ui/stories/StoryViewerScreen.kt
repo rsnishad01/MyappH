@@ -324,6 +324,7 @@ fun SingleStoryView(
             if (isVideo) {
                 com.example.ui.components.VideoPlayer(
                     videoUrl = story.mediaUrl,
+                    reelId = story.id,
                     isMuted = false,
                     isPlaying = isCurrentPage && !isPaused,
                     modifier = Modifier.fillMaxSize()
